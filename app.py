@@ -88,7 +88,28 @@ DEI 政策包含但不限於：
         
         return response.choices[0].message.content
     except Exception as e:
-        st.error(f"API 呼叫錯誤: {str(e)}")
+        error_msg = str(e)
+        st.error(f"❌ API 呼叫失敗")
+        
+        # 詳細錯誤訊息
+        if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
+            st.warning("🔑 API Key 驗證失敗，請檢查：")
+            st.markdown("""
+            1. Secrets 中的 API Key 是否正確
+            2. API Key 格式：`groq_api_key = "gsk_..."`
+            3. 到 https://console.groq.com/keys 確認 Key 有效
+            """)
+        elif "rate limit" in error_msg.lower():
+            st.warning("⏱️ API 使用額度已達上限，請稍後再試")
+        elif "connection" in error_msg.lower():
+            st.warning("🌐 網路連線問題，請檢查：")
+            st.markdown("""
+            1. Groq API 服務是否正常（https://status.groq.com）
+            2. 稍後再試一次
+            """)
+        else:
+            st.error(f"詳細錯誤：{error_msg}")
+        
         return None
 
 # 主介面
@@ -105,6 +126,19 @@ def main():
         if 'groq_api_key' in st.secrets:
             st.success("✅ 系統已就緒")
             st.session_state['api_key'] = st.secrets['groq_api_key']
+            
+            # API 測試按鈕
+            if st.button("🔌 測試 API 連線"):
+                test_client = Groq(api_key=st.secrets['groq_api_key'])
+                try:
+                    test_response = test_client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": "Hi"}],
+                        max_tokens=10
+                    )
+                    st.success("✅ API 連線成功！")
+                except Exception as e:
+                    st.error(f"❌ API 連線失敗: {str(e)}")
         else:
             st.error("⚠️ 系統設定錯誤，請聯絡管理員")
             st.stop()
