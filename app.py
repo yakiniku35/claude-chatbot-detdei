@@ -1,8 +1,9 @@
 import streamlit as st
-from openai import OpenAI
+from groq import Groq
 import PyPDF2
 import docx
 import io
+import json
 
 # 設定頁面
 st.set_page_config(
@@ -11,11 +12,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# 初始化 OpenAI client
-def init_openai():
-    api_key = st.session_state.get('api_key', '')
-    if api_key:
-        return OpenAI(api_key=api_key)
+# 初始化 Groq client
+def init_groq():
+    # 優先從 Streamlit Secrets 讀取（部署時使用）
+    if 'groq_api_key' in st.secrets:
+        return Groq(api_key=st.secrets['groq_api_key'])
+    # 其次從 session state 讀取（使用者輸入）
+    elif 'api_key' in st.session_state and st.session_state['api_key']:
+        return Groq(api_key=st.session_state['api_key'])
     return None
 
 # 讀取不同檔案格式
@@ -56,10 +60,10 @@ DEI 政策包含但不限於：
 
 {custom_policy}
 
-請以以下 JSON 格式回覆：
+請以以下 JSON 格式回覆（必須是有效的 JSON）：
 {{
-    "violation_detected": true/false,
-    "severity": "high/medium/low/none",
+    "violation_detected": true,
+    "severity": "high",
     "violations": [
         {{
             "type": "違規類型",
@@ -73,7 +77,7 @@ DEI 政策包含但不限於：
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama-3.3-70b-versatile",  # Groq 的高效能模型
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"請檢查以下內容是否違反 DEI 政策：\n\n{text}"}
@@ -91,17 +95,19 @@ DEI 政策包含但不限於：
 def main():
     st.title("🛡️ DEI 政策違規偵測器")
     st.markdown("**檢測文字或檔案內容是否違反多元、公平、共融政策**")
+    st.caption("⚡ Powered by Groq (超高速 AI)")
     
-    # 側邊欄 - API Key 設定
+    # 側邊欄 - 設定
     with st.sidebar:
         st.header("⚙️ 設定")
-        api_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            value=st.session_state.get('api_key', ''),
-            help="在 https://platform.openai.com/api-keys 取得"
-        )
-        st.session_state['api_key'] = api_key
+        
+        # 檢查是否已設定 Secrets（完全隱藏 API Key）
+        if 'groq_api_key' in st.secrets:
+            st.success("✅ 系統已就緒")
+            st.session_state['api_key'] = st.secrets['groq_api_key']
+        else:
+            st.error("⚠️ 系統設定錯誤，請聯絡管理員")
+            st.stop()
         
         st.markdown("---")
         st.header("📝 自訂政策")
@@ -114,18 +120,24 @@ def main():
         st.markdown("---")
         st.markdown("### 💡 使用說明")
         st.markdown("""
-        1. 輸入 OpenAI API Key
-        2. 上傳檔案或輸入文字
-        3. 點擊「開始檢查」
-        4. 查看分析結果
+        1. 上傳檔案或輸入文字
+        2. 點擊「開始檢查」
+        3. 查看詳細分析結果
+        
+        **🛡️ 支援檢測：**
+        - 歧視性語言
+        - 刻板印象
+        - 排他性用語
+        - 冒犯性內容
+        - 不當幽默
         """)
     
     # 主要內容區
-    client = init_openai()
+    client = init_groq()
     
     if not client:
-        st.warning("⚠️ 請先在左側輸入 OpenAI API Key")
-        return
+        st.error("❌ 系統初始化失敗，請聯絡管理員")
+        st.stop()
     
     # 輸入方式選擇
     input_method = st.radio(
@@ -146,7 +158,7 @@ def main():
             text_to_check = read_file(uploaded_file)
             if text_to_check:
                 with st.expander("📖 查看擷取的文字內容"):
-                    st.text_area("檔案內容", text_to_check, height=200)
+                    st.text_area("檔案內容", text_to_check, height=200, disabled=True)
             else:
                 st.error("無法讀取檔案或不支援的檔案格式")
     
@@ -163,11 +175,10 @@ def main():
             st.warning("請先輸入文字或上傳檔案")
             return
         
-        with st.spinner("🤖 AI 正在分析中..."):
+        with st.spinner("🤖 AI 正在高速分析中..."):
             result = check_dei_violation(client, text_to_check, custom_policy)
         
         if result:
-            import json
             try:
                 data = json.loads(result)
                 
@@ -178,7 +189,7 @@ def main():
                 # 違規狀態
                 col1, col2 = st.columns(2)
                 with col1:
-                    if data['violation_detected']:
+                    if data.get('violation_detected', False):
                         st.error("❌ 偵測到 DEI 政策違規")
                     else:
                         st.success("✅ 未偵測到 DEI 政策違規")
@@ -190,24 +201,28 @@ def main():
                         "low": "🟢 低",
                         "none": "⚪ 無"
                     }
-                    st.metric("嚴重程度", severity_colors.get(data['severity'], data['severity']))
+                    severity = data.get('severity', 'none')
+                    st.metric("嚴重程度", severity_colors.get(severity, severity))
                 
                 # 違規詳情
-                if data['violations']:
+                violations = data.get('violations', [])
+                if violations:
                     st.subheader("⚠️ 違規項目")
-                    for i, violation in enumerate(data['violations'], 1):
-                        with st.expander(f"違規 {i}: {violation['type']}", expanded=True):
-                            st.markdown(f"**具體內容：** {violation['content']}")
-                            st.markdown(f"**說明：** {violation['explanation']}")
-                            st.markdown(f"**建議：** {violation['suggestion']}")
+                    for i, violation in enumerate(violations, 1):
+                        with st.expander(f"違規 {i}: {violation.get('type', '未知')}", expanded=True):
+                            st.markdown(f"**具體內容：** {violation.get('content', 'N/A')}")
+                            st.markdown(f"**說明：** {violation.get('explanation', 'N/A')}")
+                            st.markdown(f"**建議：** {violation.get('suggestion', 'N/A')}")
                 
                 # 整體評估
-                st.subheader("📝 整體評估")
-                st.info(data['overall_assessment'])
+                if 'overall_assessment' in data:
+                    st.subheader("📝 整體評估")
+                    st.info(data['overall_assessment'])
                 
-            except json.JSONDecodeError:
-                st.error("解析結果時發生錯誤")
-                st.code(result)
+            except json.JSONDecodeError as e:
+                st.error(f"解析結果時發生錯誤: {str(e)}")
+                with st.expander("查看原始回應"):
+                    st.code(result)
 
 if __name__ == "__main__":
     main()
