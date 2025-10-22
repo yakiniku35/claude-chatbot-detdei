@@ -1,11 +1,11 @@
 # tools/web_browse.py
 
-A web-browsing tool that uses Google Programmable Search (if GOOGLE_API_KEY and GOOGLE_CSE_ID are set) or falls back to Bing when available.
-Environment variables:
-- GOOGLE_API_KEY: API key for Google Programmable Search JSON API
-- GOOGLE_CSE_ID: Search Engine ID (cx) for Programmable Search
-- BING_API_KEY: fallback Bing API key
-- OPENAI_API_KEY or ANTHROPIC_API_KEY: LLM summarization credentials
+# A web-browsing tool that uses Google Programmable Search (if GOOGLE_API_KEY and GOOGLE_CSE_ID are set) or falls back to Bing when available.
+# Environment variables:
+# - GOOGLE_API_KEY: API key for Google Programmable Search JSON API
+# - GOOGLE_CSE_ID: Search Engine ID (cx) for Programmable Search
+# - BING_API_KEY: fallback Bing API key
+# - OPENAI_API_KEY or ANTHROPIC_API_KEY: LLM summarization credentials
 
 import os
 import requests
