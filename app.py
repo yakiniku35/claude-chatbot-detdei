@@ -9,7 +9,7 @@ from duckduckgo_search import DDGS
 st.set_page_config(
     page_title="DEI 聊天機器人",
     page_icon="🤖",
-    layout="centered"
+    layout="wide"
 )
 
 # 初始化 session state
