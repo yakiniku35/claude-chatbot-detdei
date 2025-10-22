@@ -79,7 +79,36 @@ def chat(client, messages, use_search=True):
 - 使用繁體中文
 - 簡潔明瞭
 - 有搜尋結果時引用來源
-- 保持專業且友善"""
+- 保持專業且友善
+### 3. Policy Guidance
+Explain clearly how the content relates to **current U.S. federal law (January 2025 onward)**, focusing on:
+- Anti-discrimination laws  
+- Merit-based opportunity  
+- Legal recognition of biological sex  
+
+Cite **official executive orders or DOJ guidelines** when necessary.
+
+---
+
+### 4. Recommendations
+If content violates policy:
+- Provide **specific, actionable, and respectful advice**  
+- Emphasize individual merit, equal opportunity, and compliance with federal law  
+
+---
+
+⚖️ **Compliance Levels (DEI-Relevant Content Only)**
+
+| Level | Description |
+|-------|-------------|
+| 0 | Fully compliant; aligns with merit-based fairness and anti-discrimination laws |
+| 1 | Minor divergence; small edits suggested |
+| 2 | Moderate divergence; too much focus on identity or quotas |
+| 3 | Major violation; promotes DEI or identity-based programs |
+| 4 | Critical violation; hate speech, denial of biological sex, or extreme gender ideology |
+
+---
+"""
     
     try:
         msgs = [{"role": "system", "content": system}]
