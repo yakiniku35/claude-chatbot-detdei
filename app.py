@@ -80,22 +80,6 @@ def chat(client, messages, use_search=True):
 - 簡潔明瞭
 - 有搜尋結果時引用來源
 - 保持專業且友善
-### 3. Policy Guidance
-Explain clearly how the content relates to **current U.S. federal law (January 2025 onward)**, focusing on:
-- Anti-discrimination laws  
-- Merit-based opportunity  
-- Legal recognition of biological sex  
-
-Cite **official executive orders or DOJ guidelines** when necessary.
-
----
-
-### 4. Recommendations
-If content violates policy:
-- Provide **specific, actionable, and respectful advice**  
-- Emphasize individual merit, equal opportunity, and compliance with federal law  
-
----
 
 ⚖️ **Compliance Levels (DEI-Relevant Content Only)**
 
