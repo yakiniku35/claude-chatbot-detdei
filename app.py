@@ -88,7 +88,7 @@ def chat(client, messages, use_search=True):
         msgs.extend([{"role": m["role"], "content": m["content"]} for m in messages])
         
         response = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
+            model="openai/gpt-oss-120b",
             messages=msgs,
             temperature=0.7,
             max_tokens=1500
