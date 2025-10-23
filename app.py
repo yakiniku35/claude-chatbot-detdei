@@ -3,7 +3,17 @@ from groq import Groq
 import PyPDF2
 import docx
 import io
+import json
 from duckduckgo_search import DDGS
+
+# 讀取 prompts.json
+@st.cache_data
+def load_prompts():
+    try:
+        with open('prompts.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"executive_orders": []}
 
 # 設定頁面
 st.set_page_config(
@@ -67,8 +77,16 @@ def chat(client, messages, use_search=True):
                 f"• {r.get('title', '')}: {r.get('body', '')[:100]}..." 
                 for r in results[:2]
             ])
-            
-    system = """
+    
+    # 從 prompts.json 讀取執行命令
+    prompts_data = load_prompts()
+    executive_orders_text = ""
+    if prompts_data.get('executive_orders'):
+        executive_orders_text = "\n\n📋 **參考政策：**\n"
+        for order in prompts_data['executive_orders']:
+            executive_orders_text += f"• **{order.get('title', '')}**: {order.get('description', '')}\n"
+    
+    system = f"""
         你是 DEI（Diversity, Equity, and Inclusion）政策檢查助手。
 
         任務：
@@ -88,8 +106,9 @@ def chat(client, messages, use_search=True):
         3 - 顯著偏差；明顯強調身份導向或排他性
         4 - 嚴重違規；推動 DEI 或身份導向計畫
         5 - 極端違規；仇恨言論或極端性別意識形態
+        {executive_orders_text}
     """
-    
+            
     try:
         msgs = [{"role": "system", "content": system}]
         if search_context:
