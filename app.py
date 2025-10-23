@@ -85,6 +85,33 @@ def chat(client, messages, use_search=True):
         executive_orders_text = "\n\n📋 **參考政策：**\n"
         for order in prompts_data['executive_orders']:
             executive_orders_text += f"• **{order.get('title', '')}**: {order.get('description', '')}\n"
+    # 從 prompts.json 讀取 document.policies 與 administration（如果存在）並摘要化
+    policies_text = ""
+    doc = prompts_data.get('document')
+    # 支援 document 為物件或單元素陣列
+    if doc:
+        if isinstance(doc, list) and len(doc) > 0:
+            doc = doc[0]
+        if isinstance(doc, dict):
+            policies = doc.get('policies') or doc.get('policy')
+            if policies and isinstance(policies, dict):
+                policies_text = "\n\n📚 **政策摘要：**\n"
+                for key, p in policies.items():
+                    title = p.get('title') or key
+                    summary = p.get('summary', '')
+                    actions = p.get('actions', [])
+                    policies_text += f"**{title}**: {summary}\n"
+                    if actions:
+                        policies_text += "  - 動作: " + "; ".join(actions[:3]) + ("...\n" if len(actions) > 3 else "\n")
+            admin = doc.get('administration')
+            if admin and isinstance(admin, dict):
+                policies_text += "\n🏛️ **管理團隊：**\n"
+                president = admin.get('president')
+                term = admin.get('term')
+                if president:
+                    policies_text += f"- 主席/總統: {president}\n"
+                if term:
+                    policies_text += f"- 任期: {term}\n"
     
     system = f"""
         你是 DEI（Diversity, Equity, and Inclusion）政策檢查助手。
@@ -99,14 +126,14 @@ def chat(client, messages, use_search=True):
         - 保持專業、友善，內容簡潔適中
         - 有搜尋結果時可引用
 
-        ⚖️ DEI 遵守等級：
+    ⚖️ DEI 遵守等級：
         0 - 完全符合；尊重公平與反歧視法規
         1 - 輕微偏差；建議小幅修改
         2 - 中度偏差；部分內容偏重身份或配額
         3 - 顯著偏差；明顯強調身份導向或排他性
         4 - 嚴重違規；推動 DEI 或身份導向計畫
         5 - 極端違規；仇恨言論或極端性別意識形態
-        {executive_orders_text}
+        {executive_orders_text}{policies_text}
     """
             
     try:

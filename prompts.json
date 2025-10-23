@@ -18,10 +18,11 @@
     }
   ],
 
-  "document": {
-    "source": "The White House",
-    "date": "2025-01-21",
-    "document_title": "Ending Illegal Discrimination and Restoring Merit-Based Opportunity",
+  "document": [
+    {
+      "source": "The White House",
+      "date": "2025-01-21",
+      "document_title": "Ending Illegal Discrimination and Restoring Merit-Based Opportunity",
     "policies": {
       "DEI_Policy_Termination": {
         "title": "Termination of Diversity, Equity, and Inclusion Policies",
@@ -65,9 +66,9 @@
       "term": "2025-2029",
       "policy_focus": [
         "Civil Rights Integrity",
-        "Gender Policy Reform",
-        "Energy Independence"
+        "Gender Policy Reform"
       ]
     }
-  }
+    }
+  ]
 }
