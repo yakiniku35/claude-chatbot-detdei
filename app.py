@@ -134,7 +134,6 @@ def chat(client, messages, use_search=True):
         4 - 嚴重違規；推動 DEI 或身份導向計畫
         5 - 極端違規；仇恨言論或極端性別意識形態
         DEI 檢查結果：請在回覆開頭標明等級（0-5）
-        只要回覆這個就可以，除非使用者有要求更多才根據使用者要求回覆
         {executive_orders_text}{policies_text}
     """
             
