@@ -3,3 +3,4 @@ groq>=0.1.0
 PyPDF2>=3.0.0
 python-docx>=0.8.11
 duckduckgo_search>=2.5.0
+supabase>=2.0.0

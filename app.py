@@ -5,6 +5,9 @@ import docx
 import io
 import json
 from duckduckgo_search import DDGS
+from supabase import create_client, Client
+from datetime import datetime
+import uuid
 
 # 讀取 prompts.json
 @st.cache_data
@@ -32,11 +35,60 @@ if 'messages' not in st.session_state:
 if 'file_processed' not in st.session_state:
     st.session_state.file_processed = set()
 
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+if 'supabase_enabled' not in st.session_state:
+    st.session_state.supabase_enabled = False
+
 # 初始化 Groq
 def init_groq():
     if 'groq_api_key' in st.secrets:
         return Groq(api_key=st.secrets['groq_api_key'])
     return None
+
+# 初始化 Supabase
+def init_supabase():
+    try:
+        if 'supabase_url' in st.secrets and 'supabase_key' in st.secrets:
+            return create_client(st.secrets['supabase_url'], st.secrets['supabase_key'])
+    except Exception as e:
+        st.error(f"Supabase 初始化失敗: {str(e)}")
+    return None
+
+# 儲存訊息到 Supabase
+def save_message_to_supabase(supabase: Client, session_id: str, role: str, content: str):
+    try:
+        data = {
+            "session_id": session_id,
+            "role": role,
+            "content": content,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        supabase.table("chat_history").insert(data).execute()
+        return True
+    except Exception as e:
+        st.error(f"儲存訊息失敗: {str(e)}")
+        return False
+
+# 從 Supabase 載入聊天記錄
+def load_chat_history(supabase: Client, session_id: str):
+    try:
+        response = supabase.table("chat_history").select("*").eq("session_id", session_id).order("timestamp").execute()
+        if response.data:
+            return [{"role": msg["role"], "content": msg["content"]} for msg in response.data]
+    except Exception as e:
+        st.error(f"載入聊天記錄失敗: {str(e)}")
+    return None
+
+# 刪除聊天記錄
+def delete_chat_history(supabase: Client, session_id: str):
+    try:
+        supabase.table("chat_history").delete().eq("session_id", session_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"刪除聊天記錄失敗: {str(e)}")
+        return False
 
 # 讀取檔案
 def read_file(file):
@@ -179,6 +231,46 @@ with st.sidebar:
     
     st.success("✅ 系統就緒")
     
+    # Supabase 設定
+    st.divider()
+    supabase_client = init_supabase()
+    if supabase_client:
+        st.success("✅ Supabase 已連線")
+        
+        # Supabase 開關
+        supabase_enabled = st.toggle(
+            "💾 儲存聊天記錄到 Supabase", 
+            value=st.session_state.supabase_enabled,
+            help="開啟後會將聊天記錄儲存到 Supabase"
+        )
+        
+        # 如果開關狀態改變
+        if supabase_enabled != st.session_state.supabase_enabled:
+            st.session_state.supabase_enabled = supabase_enabled
+            
+            # 如果是開啟，嘗試載入歷史記錄
+            if supabase_enabled:
+                loaded_history = load_chat_history(supabase_client, st.session_state.session_id)
+                if loaded_history:
+                    st.session_state.messages = loaded_history
+                    st.success(f"已載入 {len(loaded_history)} 則訊息")
+                    st.rerun()
+        
+        # 顯示當前 Session ID
+        if st.session_state.supabase_enabled:
+            with st.expander("📝 Session 資訊"):
+                st.text(f"Session ID: {st.session_state.session_id[:8]}...")
+                if st.button("🔄 建立新 Session", use_container_width=True):
+                    st.session_state.session_id = str(uuid.uuid4())
+                    st.session_state.messages = [{
+                        "role": "assistant",
+                        "content": "👋 你好！我可以幫你檢查文字或檔案是否違反 DEI 政策，也可以回答相關問題。"
+                    }]
+                    st.session_state.file_processed = set()
+                    st.rerun()
+    else:
+        st.info("ℹ️ Supabase 未設定")
+    
     # 檔案上傳
     st.divider()
     uploaded = st.file_uploader(
@@ -205,6 +297,16 @@ with st.sidebar:
                         "role": "user",
                         "content": user_message
                     })
+                    
+                    # 儲存到 Supabase
+                    if st.session_state.supabase_enabled and supabase_client:
+                        save_message_to_supabase(
+                            supabase_client,
+                            st.session_state.session_id,
+                            "user",
+                            user_message
+                        )
+                    
                     st.rerun()
                 else:
                     st.error("無法讀取檔案")
@@ -217,6 +319,10 @@ with st.sidebar:
     # 清除
     st.divider()
     if st.button("🗑️ 清除對話", use_container_width=True):
+        # 如果啟用 Supabase，從資料庫刪除
+        if st.session_state.supabase_enabled and supabase_client:
+            delete_chat_history(supabase_client, st.session_state.session_id)
+        
         st.session_state.messages = [{
             "role": "assistant",
             "content": "對話已清除！有什麼我可以幫你的嗎？"
@@ -230,6 +336,9 @@ if not client:
     st.error("❌ 系統初始化失敗")
     st.stop()
 
+# 初始化 Supabase (在這裡也初始化以供聊天使用)
+supabase_client = init_supabase()
+
 # 顯示對話歷史
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -238,6 +347,16 @@ for msg in st.session_state.messages:
 # 文字輸入
 if prompt := st.chat_input("輸入訊息..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # 儲存用戶訊息到 Supabase
+    if st.session_state.supabase_enabled and supabase_client:
+        save_message_to_supabase(
+            supabase_client,
+            st.session_state.session_id,
+            "user",
+            prompt
+        )
+    
     with st.chat_message("user"):
         st.markdown(prompt)
     
@@ -251,4 +370,14 @@ if prompt := st.chat_input("輸入訊息..."):
             st.markdown(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # 儲存助手回應到 Supabase
+    if st.session_state.supabase_enabled and supabase_client:
+        save_message_to_supabase(
+            supabase_client,
+            st.session_state.session_id,
+            "assistant",
+            response
+        )
+    
     st.rerun()

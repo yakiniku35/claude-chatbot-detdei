@@ -26,6 +26,7 @@ streamlit run app.py
 - **File Support**: PDF, DOCX, TXT
 - **Custom Policies**: Add organization-specific rules
 - **Conversation History**: Full chat context maintained
+- **Supabase Integration**: Optional persistent chat history storage (see [SUPABASE_SETUP.md](SUPABASE_SETUP.md))
 
 ## Architecture
 
