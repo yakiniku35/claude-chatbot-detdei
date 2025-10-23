@@ -196,9 +196,9 @@ with st.sidebar:
                 
                 content = read_file(uploaded)
                 if content:
-                    user_message = f"📎 **{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:4000]}"
-                    if len(content) > 4000:
-                        user_message += "\n\n*（檔案較長，已截取前 4000 字元）*"
+                    user_message = f"📎 **{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:10000]}"
+                    if len(content) > 10000:
+                        user_message += "\n\n*（檔案較長，已截取前 10000 字元）*"
                     
                     st.session_state.messages.append({
                         "role": "user",
