@@ -5,7 +5,14 @@ import docx
 import io
 import json
 from duckduckgo_search import DDGS
-from supabase import create_client, Client
+# Supabase is optional. Guard the import so the app can run without the package.
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except Exception:
+    create_client = None
+    Client = None
+    SUPABASE_AVAILABLE = False
 from datetime import datetime
 import uuid
 
@@ -49,6 +56,9 @@ def init_groq():
 
 # 初始化 Supabase
 def init_supabase():
+    if not SUPABASE_AVAILABLE:
+        # Supabase client not installed in environment
+        return None
     try:
         if 'supabase_url' in st.secrets and 'supabase_key' in st.secrets:
             return create_client(st.secrets['supabase_url'], st.secrets['supabase_key'])
@@ -57,8 +67,10 @@ def init_supabase():
     return None
 
 # 儲存訊息到 Supabase
-def save_message_to_supabase(supabase: Client, session_id: str, role: str, content: str):
+def save_message_to_supabase(supabase, session_id: str, role: str, content: str):
     try:
+        if not supabase:
+            return False
         data = {
             "session_id": session_id,
             "role": role,
@@ -72,8 +84,10 @@ def save_message_to_supabase(supabase: Client, session_id: str, role: str, conte
         return False
 
 # 從 Supabase 載入聊天記錄
-def load_chat_history(supabase: Client, session_id: str):
+def load_chat_history(supabase, session_id: str):
     try:
+        if not supabase:
+            return None
         response = supabase.table("chat_history").select("*").eq("session_id", session_id).order("timestamp").execute()
         if response.data:
             return [{"role": msg["role"], "content": msg["content"]} for msg in response.data]
@@ -82,8 +96,10 @@ def load_chat_history(supabase: Client, session_id: str):
     return None
 
 # 刪除聊天記錄
-def delete_chat_history(supabase: Client, session_id: str):
+def delete_chat_history(supabase, session_id: str):
     try:
+        if not supabase:
+            return False
         supabase.table("chat_history").delete().eq("session_id", session_id).execute()
         return True
     except Exception as e:
