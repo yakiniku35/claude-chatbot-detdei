@@ -1,74 +1,57 @@
 {
   "executive_orders": [
     {
-      "title": "End DEI Discrimination",
-      "description": "Prohibit discrimination based on race, gender, or other identifiers in government contracts and funding. Restore merit-based opportunity."
+      "title": "End Illegal Discrimination and Restore Merit-Based Opportunity",
+      "eo_number": "14173",
+      "description": "End illegal preferential treatment or discrimination in federal hiring, promotion, and funding. Restore fairness based on qualifications and merit.",
+      "actions": [
+        "Stop identity-based preferences in recruitment, promotion, and funding",
+        "Ensure all agencies follow merit-based evaluations",
+        "Align policies with the Civil Rights Act of 1964"
+      ],
+      "purpose": "Restore merit-based equal opportunity in the federal government."
     },
     {
-      "title": "Defend Women's Rights",
-      "description": "Protect women's rights in the workplace, including equal pay, access to single-sex spaces, and support for working mothers."
+      "title": "Terminate Radical and Wasteful Government DEI Programs",
+      "eo_number": "14171",
+      "description": "Critique and remove radical DEI programs that waste resources and promote ideological bias in federal agencies.",
+      "actions": [
+        "Terminate DEI-related training, programs, and initiatives",
+        "Emphasize performance and merit as core management criteria",
+        "Require agencies to report program terminations"
+      ],
+      "purpose": "Eliminate unnecessary DEI programs and redirect focus to performance and ability."
+    },
+    {
+      "title": "Defend Women from Gender Ideology Extremism and Restore Biological Truth",
+      "eo_number": "14170",
+      "description": "Protect women’s rights in sports, education, and public spaces, maintaining clear distinctions between biological sex and gender identity.",
+      "actions": [
+        "Mandate federal policies to distinguish biological sex from gender identity",
+        "Ensure equal opportunities and safety for women in all relevant areas",
+        "Ban funding or support for programs promoting gender ideology"
+      ],
+      "purpose": "Safeguard women's rights and uphold biological sex distinctions in federal policies."
     },
     {
       "title": "Unleash American Energy",
-      "description": "Remove unnecessary regulations that hinder the development of American energy resources, promoting energy independence and economic growth."
-    },
-    {
-      "title": "Promote Fairness in Education",
-      "description": "Eliminate policies that prioritize DEI initiatives over merit-based evaluations in educational institutions."
+      "eo_number": "14154",
+      "description": "Remove restrictions on energy production, including oil, gas, and nuclear, to promote energy independence and economic growth.",
+      "actions": [
+        "Cancel or modify regulations limiting energy development",
+        "Promote freer development of domestic energy resources",
+        "Streamline permitting processes for energy projects"
+      ],
+      "purpose": "Strengthen U.S. energy independence and boost economic growth."
     }
   ],
-
-  "documents": [
-    {
-      "source": "The White House",
-      "date": "2025-01-21",
-      "document_title": "Ending Illegal Discrimination and Restoring Merit-Based Opportunity",
-      "policies": {
-        "DEI_Policy_Termination": {
-          "title": "Termination of Diversity, Equity, and Inclusion Policies",
-          "summary": "All federal agencies must terminate DEI offices, Chief Diversity Officers, and initiatives promoting race- or gender-based preferences within 60 days.",
-          "actions": [
-            "Rescind affirmative action and workforce balancing programs",
-            "Withdraw prior executive orders related to DEI (including EO 11246)",
-            "Require agencies to submit termination reports to the OMB"
-          ],
-          "purpose": "Restore merit-based opportunity and uphold the Civil Rights Act of 1964"
-        },
-        "Biological_Sex_Definition": {
-          "title": "Protection of Biological Sex Definition",
-          "summary": "Defines 'sex' strictly as biological and immutable, distinct from 'gender identity'.",
-          "actions": [
-            "Mandate all federal documentation and policies to use biological sex categories",
-            "Ban funding for gender ideology programs",
-            "Ensure single-sex facilities follow biological sex"
-          ],
-          "implementing_agencies": [
-            "Department of State",
-            "Department of Homeland Security",
-            "Department of Justice"
-          ]
-        },
-        "Energy_Policy_Reform": {
-          "title": "Unleashing American Energy Policy",
-          "summary": "Prioritizes fossil fuels and nuclear development, revokes several climate-related executive orders, and accelerates energy permits.",
-          "actions": [
-            "Rescind EO 14008 and EO 14057",
-            "Dissolve the American Climate Corps",
-            "Suspend disbursement of Inflation Reduction Act green energy funds",
-            "Abolish the 'social cost of carbon' metric",
-            "Simplify NEPA review processes"
-          ],
-          "purpose": "Strengthen energy independence, economic growth, and national security"
-        }
-      },
-      "administration": {
-        "president": "Donald J. Trump",
-        "term": "2025-2029",
-        "policy_focus": [
-          "Civil Rights Integrity",
-          "Gender Policy Reform"
-        ]
-      }
-    }
-  ]
+  "administration": {
+    "president": "Donald J. Trump",
+    "term": "2025-2029",
+    "policy_focus": [
+      "Civil Rights Integrity",
+      "Gender Policy Reform",
+      "Energy Independence"
+    ]
+  }
 }
