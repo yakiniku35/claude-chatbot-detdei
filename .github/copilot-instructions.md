@@ -24,16 +24,17 @@ claude-chatbot-detdei/
 The application is structured as a single-file Streamlit app with these key functions:
 
 - `load_prompts()`: Loads policy definitions from `prompts.json` (cached)
-- `init_groq()`: Initializes Groq API client using secrets
+- `init_groq()`: Initializes Groq API client using secrets or environment variables
+- `is_analysis_request()`: Detects if user wants analysis or casual conversation
 - `read_file()`: Extracts text from uploaded documents (PDF, DOCX, TXT)
 - `search_web()`: DuckDuckGo integration for current information
 - `should_search()`: Detects keywords that trigger web search
-- `chat()`: Main AI interaction with policy context injection
+- `chat()`: Main AI interaction with context-aware prompts (two modes: casual vs. analysis)
 
 ## Development Setup
 
 ### Prerequisites
-- Python 3.11
+- Python 3.11+
 - Groq API key
 
 ### Installation
@@ -42,9 +43,15 @@ pip install -r requirements.txt
 ```
 
 ### Configuration
+Option 1 - Streamlit Secrets (recommended for local):
 Create `.streamlit/secrets.toml`:
 ```toml
 groq_api_key = "your_key_here"
+```
+
+Option 2 - Environment Variable (recommended for deployment):
+```bash
+export GROQ_API_KEY="your_key_here"
 ```
 
 ### Running the Application
