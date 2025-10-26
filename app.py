@@ -4,6 +4,7 @@ import PyPDF2
 import docx
 import io
 import json
+import os
 from duckduckgo_search import DDGS
 # Supabase is optional. Guard the import so the app can run without the package.
 try:
@@ -36,7 +37,7 @@ st.set_page_config(
 if 'messages' not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant",
-        "content": "👋 你好！我可以幫你檢查文字或檔案是否違反 DEI 政策，也可以回答相關問題。"
+        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
     }]
 
 if 'file_processed' not in st.session_state:
@@ -50,8 +51,15 @@ if 'supabase_enabled' not in st.session_state:
 
 # 初始化 Groq
 def init_groq():
+    # Support both Streamlit secrets and environment variables
+    api_key = None
     if 'groq_api_key' in st.secrets:
-        return Groq(api_key=st.secrets['groq_api_key'])
+        api_key = st.secrets['groq_api_key']
+    elif 'GROQ_API_KEY' in os.environ:
+        api_key = os.environ.get('GROQ_API_KEY')
+    
+    if api_key:
+        return Groq(api_key=api_key)
     return None
 
 # 初始化 Supabase
@@ -133,6 +141,22 @@ def should_search(text):
     keywords = ["最新", "近期", "現在", "查詢", "搜尋", "2024", "2025", "案例", "趨勢", "統計", "研究"]
     return any(k in text.lower() for k in keywords)
 
+# 判斷使用者是否要求進行 DEI 分析
+def is_analysis_request(text):
+    """
+    判斷使用者訊息是否為 DEI 政策分析請求
+    Returns: True if requesting analysis, False for casual conversation
+    """
+    analysis_keywords = [
+        "檢查", "分析", "評估", "審查", "違反", "符合", "遵守", "等級",
+        "dei", "政策", "歧視", "刻板印象", "排他", "冒犯", "不當",
+        "請幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反",
+        "check", "analyze", "review", "violate", "comply", "policy"
+    ]
+    
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in analysis_keywords)
+
 # AI 對話
 def chat(client, messages, use_search=True):
     search_context = ""
@@ -145,6 +169,9 @@ def chat(client, messages, use_search=True):
                 f"• {r.get('title', '')}: {r.get('body', '')[:100]}..." 
                 for r in results[:2]
             ])
+    
+    # 判斷使用者是否要求進行分析
+    requesting_analysis = last_msg and is_analysis_request(last_msg["content"])
     
     # 從 prompts.json 讀取執行命令
     prompts_data = load_prompts()
@@ -181,30 +208,59 @@ def chat(client, messages, use_search=True):
                 if term:
                     policies_text += f"- 任期: {term}\n"
     
-    system = f"""
-        你是 DEI（Diversity, Equity, and Inclusion）政策檢查助手。
+    # 根據使用者意圖選擇不同的系統提示
+    if requesting_analysis:
+        # 分析模式：專業的 DEI 政策檢查
+        system = f"""你是一位友善且專業的 DEI（Diversity, Equity, and Inclusion）政策助手。
 
-        任務：
-        1. 檢查內容是否違反 DEI（歧視、刻板印象、排他性語言、冒犯或不當幽默）
-        2. 回答 DEI 相關問題
-        3. 提供具體改進建議
+你的主要能力：
+1. 檢查內容是否違反 DEI 原則（歧視、刻板印象、排他性語言、冒犯或不當幽默）
+2. 回答 DEI 相關問題
+3. 提供具體、可行的改進建議
 
-        回覆要求：
-        - 其實這麼嚴肅、不是每一個都是要求你分辨是否為dei政策的
-        - 使用繁體中文或與使用者語言一致
-        - 保持專業、友善，內容簡潔適中
-        - 有搜尋結果時可引用
+當使用者要求你分析或檢查內容時，請：
+- 仔細評估內容的 DEI 遵守程度
+- 在回覆開頭標明 **DEI 遵守等級（0-5）**
+- 清楚說明發現的問題
+- 提供具體的修改建議
+- 保持專業但友善的語氣
 
-    ⚖️ DEI 遵守等級：
-        0 - 完全符合；尊重公平與反歧視法規
-        1 - 輕微偏差；建議小幅修改
-        2 - 中度偏差；部分內容偏重身份或配額
-        3 - 顯著偏差；明顯強調身份導向或排他性
-        4 - 嚴重違規；推動 DEI 或身份導向計畫
-        5 - 極端違規；仇恨言論或極端性別意識形態
-        DEI 檢查結果：請在回覆開頭標明等級（0-5）
-        {executive_orders_text}{policies_text}
-    """
+⚖️ DEI 遵守等級參考：
+0 - 完全符合；尊重公平與反歧視法規
+1 - 輕微偏差；建議小幅修改
+2 - 中度偏差；部分內容偏重身份或配額
+3 - 顯著偏差；明顯強調身份導向或排他性
+4 - 嚴重違規；推動 DEI 或身份導向計畫
+5 - 極端違規；仇恨言論或極端性別意識形態
+
+回覆語言：使用繁體中文或與使用者語言一致
+{executive_orders_text}{policies_text}
+"""
+    else:
+        # 對話模式：輕鬆、友善的聊天
+        system = f"""你是一位友善、親切的 DEI（Diversity, Equity, and Inclusion）政策助手。
+
+你的個性：
+- 輕鬆但專業，不會太過嚴肅
+- 樂於與使用者聊天和互動
+- 能理解使用者的情境和需求
+- 善於用簡單的方式解釋複雜的概念
+
+你的能力：
+- 回答關於 DEI 政策的問題
+- 提供政策相關的資訊和建議
+- 與使用者進行友善的對話
+- 當使用者需要時，可以分析內容是否符合 DEI 政策
+
+互動原則：
+- 如果使用者只是在聊天或問問題，就自然地回應，**不需要評分或進行正式分析**
+- 如果使用者明確要求分析、檢查或評估內容，再進行專業的 DEI 評估並給予等級
+- 保持友善、樂於助人的態度
+- 使用繁體中文或與使用者語言一致
+
+記住：不是每個對話都需要 DEI 等級評分，大多數時候你只需要像朋友一樣聊天和提供資訊！
+{executive_orders_text if not requesting_analysis else ''}{policies_text if not requesting_analysis else ''}
+"""
             
     try:
         msgs = [{"role": "system", "content": system}]
@@ -242,7 +298,7 @@ st.title("🤖 DEI 政策助手")
 # 側邊欄
 with st.sidebar:
     # API 狀態
-    if 'groq_api_key' not in st.secrets:
+    if 'groq_api_key' not in st.secrets and 'GROQ_API_KEY' not in os.environ:
         st.error("⚠️ 系統未設定，請聯絡管理員")
         st.stop()
     
@@ -281,7 +337,7 @@ with st.sidebar:
                     st.session_state.session_id = str(uuid.uuid4())
                     st.session_state.messages = [{
                         "role": "assistant",
-                        "content": "👋 你好！我可以幫你檢查文字或檔案是否違反 DEI 政策，也可以回答相關問題。"
+                        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
                     }]
                     st.session_state.file_processed = set()
                     st.rerun()
@@ -342,7 +398,7 @@ with st.sidebar:
         
         st.session_state.messages = [{
             "role": "assistant",
-            "content": "對話已清除！有什麼我可以幫你的嗎？"
+            "content": "對話已清除！😊 有什麼我可以幫你的嗎？"
         }]
         st.session_state.file_processed = set()
         st.rerun()
