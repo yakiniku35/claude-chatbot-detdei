@@ -268,8 +268,8 @@ def chat(client, messages, use_search=True):
 不得使用或假設命令之外的政治背景、媒體解讀或社會反應。
 
 所有引述須可追溯至該命令原文或明確條款。
-{executive_orders_text if not requesting_analysis else ''}{policies_text if not requesting_analysis else ''}
 """
+        # {executive_orders_text if not requesting_analysis else ''}{policies_text if not requesting_analysis else ''}
     else:
         system = system_general
             
