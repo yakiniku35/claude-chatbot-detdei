@@ -208,9 +208,18 @@ def chat(client, messages, use_search=True):
                 if term:
                     policies_text += f"- 任期: {term}\n"
     
+    # 準備一般系統提示（適用於非深入法規分析的對話）
+    system_general = f"""
+    你是 DEI（Diversity, Equity, and Inclusion）政策檢查助手。請以專業、友善且中立的語氣回答使用者問題。
+
+    當使用者要求政策背景或參考資料時，可引用下列摘要：
+    {executive_orders_text}
+    {policies_text}
+    """
+
     # 根據使用者意圖選擇不同的系統提示
     if requesting_analysis:
-        # 分析模式：專業的 DEI 政策檢查
+        # 分析模式：專業的 DEI 政策檢查（更嚴格的寫作和推論限制）
         system = f"""你是一名專業的政治與法律政策研究助理。
 所有分析、報告、摘要或評論，必須完全依據行政命令或法條文字，不得加入外部資料、媒體評論、主觀推測或未經文件支持的觀點。
 
@@ -261,6 +270,8 @@ def chat(client, messages, use_search=True):
 所有引述須可追溯至該命令原文或明確條款。
 {executive_orders_text if not requesting_analysis else ''}{policies_text if not requesting_analysis else ''}
 """
+    else:
+        system = system_general
             
     try:
         msgs = [{"role": "system", "content": system}]
