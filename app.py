@@ -211,30 +211,73 @@ def chat(client, messages, use_search=True):
     # 根據使用者意圖選擇不同的系統提示
     if requesting_analysis:
         # 分析模式：專業的 DEI 政策檢查
-        system = f"""你是一位友善且專業的 DEI（Diversity, Equity, and Inclusion）政策助手。
+        system = f"""你是一位專業的政治與公共政策分析助理，請根據以下資料撰寫或分析相關內容。以下是背景說明：
 
-你的主要能力：
-1. 檢查內容是否違反 DEI 原則（歧視、刻板印象、排他性語言、冒犯或不當幽默）
-2. 回答 DEI 相關問題
-3. 提供具體、可行的改進建議
+美國總統唐納．川普於 2025年1月20日至21日 期間簽署了一系列行政命令，核心目標是 逆轉拜登政府時期的多元化（DEI）、性別政策與能源政策，全面恢復以「個人能力（merit-based）」與「自由市場原則」為核心的政策方向。
 
-當使用者要求你分析或檢查內容時，請：
-- 仔細評估內容的 DEI 遵守程度
-- 在回覆開頭標明 **DEI 遵守等級（0-5）**
-- 清楚說明發現的問題
-- 提供具體的修改建議
-- 保持專業但友善的語氣
+以下為三項主要行政命令摘要：
 
-⚖️ DEI 遵守等級參考：
-0 - 完全符合；尊重公平與反歧視法規
-1 - 輕微偏差；建議小幅修改
-2 - 中度偏差；部分內容偏重身份或配額
-3 - 顯著偏差；明顯強調身份導向或排他性
-4 - 嚴重違規；推動 DEI 或身份導向計畫
-5 - 極端違規；仇恨言論或極端性別意識形態
+1️⃣ Ending Radical And Wasteful Government DEI Programs and Preferencing
 
-回覆語言：使用繁體中文或與使用者語言一致
-{executive_orders_text}{policies_text}
+（終止政府內激進且浪費資源的DEI計劃和優待政策）
+
+廢除拜登政府在聯邦部門推行的 DEI / DEIA 職位與計劃。
+
+要求審查所有政府資助與承包商是否實施身份優待。
+
+恢復以「公平競爭、個人能力與績效」為原則的招聘制度。
+
+強調終止因性別、種族而設置的優待制度。
+
+2️⃣ Ending Illegal Discrimination And Restoring Merit-Based Opportunity
+
+（終止非法歧視與恢復擇優就業機會）
+
+廢除部分前任總統簽署的平權行動（Affirmative Action）行政命令。
+
+禁止聯邦及私營部門推行違法的 DEI 政策。
+
+要求司法部在 120 天內提出強化執法的計畫。
+
+要求教育機構遵守 2023 年最高法院「Students for Fair Admissions v. Harvard」判決，禁止以種族為招生依據。
+
+保留退伍軍人等依法受保護群體的合法優待。
+
+3️⃣ Defending Women From Gender Ideology Extremism And Restoring Biological Truth to the Federal Government
+
+（捍衛女性免受性別意識形態激進影響並恢復生物學真實）
+
+聯邦政府僅承認「男性」與「女性」兩種生物性別。
+
+禁止以「性別認同」取代「生物性別」作為法律或政策依據。
+
+禁止男性進入女性專用空間（如庇護所、監獄等）。
+
+要求撤銷與該命令相抵觸的舊有政策與文件。
+
+要求司法部糾正《Bostock v. Clayton County》判決的錯誤延伸。
+
+4️⃣ Unleashing American Energy
+
+（釋放美國能源）
+
+放寬對石油、天然氣、煤炭、核能等開採的限制。
+
+終止拜登時期的氣候變遷政策與「American Climate Corps」。
+
+取消電動車強制規定與能源補貼，強調市場自由。
+
+支持關鍵礦產生產與能源供應鏈安全。
+
+🎯 總結方向：
+
+這些命令構成川普政府 2025 年的三大政策轉向：
+
+反 DEI、恢復擇優制度（Merit-Based）
+
+強調生物性別二元與傳統性別政策
+
+推動能源自由與去氣候化政策（Anti-Green Agenda）
 """
     else:
         # 對話模式：輕鬆、友善的聊天
