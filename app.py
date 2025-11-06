@@ -151,7 +151,7 @@ def is_analysis_request(text):
         "檢查", "分析", "評估", "審查", "違反", "符合", "遵守", "等級",
         "dei", "政策", "歧視", "刻板印象", "排他", "冒犯", "不當",
         "請幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反",
-        "check", "analyze", "review", "violate", "comply", "policy"
+        "check", "analyze", "review", "violate", "comply", "policy","討論"
     ]
     
     text_lower = text.lower()
