@@ -234,7 +234,9 @@ Format your output as:
 - Legal/Regulatory Consideration: [brief explanation, if applicable]
 
 Be concise but clear, and only include points directly related to DEI.
-use the same language as the user. And refer to the following policies and executive orders for your analysis:
+use the same language as the user.
+IF they use traditional Chinese, please use Traditional Chinese.
+And refer to the following policies and executive orders for your analysis:
 {executive_orders_text}{policies_text}
 """
     else:
