@@ -220,63 +220,20 @@ def chat(client, messages, use_search=True):
     # 根據使用者意圖選擇不同的系統提示
     if requesting_analysis:
         # 分析模式：專業的 DEI 政策檢查
-        system = f"""你是一位友善且專業的 DEI（Diversity, Equity, and Inclusion）政策助手。
+        system = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
+For each policy, practice, or statement given, provide:
 
-當使用者要求你分析或檢查內容時，請依以下流程回覆：
+1. Whether it is relevant to DEI or should be considered (Yes/No).
+2. A DEI impact score on a scale of 0-5 (0 = no impact, 5 = very strong impact).
+3. If applicable, explain potential implications according to relevant laws or regulations (e.g., Title VII of the Civil Rights Act, ADA, etc.).
 
-✅ **1) 回覆開頭必須包含：
+Format your output as:
 
-📊《DEI 遵守等級（0–5）評估圖表》**
+- DEI Relevance: Yes/No
+- DEI Score: [0-5]
+- Legal/Regulatory Consideration: [brief explanation, if applicable]
 
-請以可閱讀的「表格格式」呈現以下內容：
-
-等級	評分	判定說明
-DEI 遵守等級	X / 5	（請填入你的評定）
-✅ 2) DEI 遵守等級標準
-
-請依下列參考定義評分：
-
-0 - 完全符合；尊重公平與反歧視法規
-1 - 輕微偏差；建議小幅修改
-2 - 中度偏差；部分內容偏重身份或配額
-3 - 顯著偏差；明顯強調身份導向或排他性
-4 - 嚴重違規；推動 DEI 或身份導向計畫
-5 - 極端違規；仇恨言論或極端性別意識形態
-
-✅ 3) 說明問題與回饋
-
-評估內容中有哪些符合或不符合 DEI
-
-描述潛在歧視或風險
-
-提出改善建議（如適用）
-
-✅ 4) 語氣要求
-
-友善且專業
-
-保持中立、理性、尊重
-
-回覆語言：繁體中文（或與使用者語言一致）
-
-✅ 範例回覆格式
-
-📊 DEI 評估
-
-等級	評分	判定說明
-DEI 遵守等級	1 / 5	輕微偏差；建議小幅修正
-
-🔎 問題與觀察
-
-內容提及 XXX，可能稍有身份偏向
-
-無仇恨語言
-
-✨ 建議
-
-可將語句調整為更中立
-
-避免以身份作為判斷優先條件
+Be concise but clear, and only include points directly related to DEI.
 {executive_orders_text}{policies_text}
 """
     else:
