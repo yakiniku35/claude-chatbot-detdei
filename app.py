@@ -63,9 +63,9 @@ def init_groq():
     return None
 
 # 初始化 Supabase
+@st.cache_resource
 def init_supabase():
     if not SUPABASE_AVAILABLE:
-        # Supabase client not installed in environment
         return None
     try:
         if 'supabase_url' in st.secrets and 'supabase_key' in st.secrets:
