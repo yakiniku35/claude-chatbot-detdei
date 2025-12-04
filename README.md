@@ -2,10 +2,14 @@
 
 A Streamlit-based chatbot application for analyzing content against Diversity, Equity, and Inclusion (DEI) policies.
 
+## ✨ New: Intelligent Search with LangGraph
+
+This chatbot now features an optional **AI-powered search agent** using LangGraph and Tavily API for smarter, more accurate responses. [Learn more →](docs/LANGGRAPH_INTEGRATION.md)
+
 ## Quick Start
 
 ```bash
-pip install -r config/requirements.txt
+pip install -r requirements.txt
 streamlit run src/app.py
 ```
 
@@ -13,14 +17,25 @@ streamlit run src/app.py
 
 - [Full README](docs/README.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [LangGraph Integration Guide](docs/LANGGRAPH_INTEGRATION.md) 🆕
 - [Security Policy](docs/security.md)
 - [Improvements Summary](docs/IMPROVEMENTS_SUMMARY.md)
 
 ## Configuration
 
 - Application config: `config/prompts.json`
-- Dependencies: `config/requirements.txt`
-- Database schema: `config/supabase_schema.sql`
+- Dependencies: `requirements.txt`
+- Database schema: `supabase/migrations/schema.sql`
+
+### API Keys
+
+Required:
+- `GROQ_API_KEY` - For AI chat functionality
+
+Optional (for enhanced search):
+- `TAVILY_API_KEY` - For intelligent web search with LangGraph
+
+Configure in `.streamlit/secrets.toml` or as environment variables.
 
 ## License
 
