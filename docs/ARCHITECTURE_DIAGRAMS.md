@@ -180,7 +180,7 @@ Final Response String → Streamlit Display
 │  ├─ langchain-groq    (Groq integration)                 │
 │  ├─ langgraph         (Agent orchestration)              │
 │  ├─ langgraph-checkpoint (State management)              │
-│  └─ tavily-python     (Search API)                       │
+│  └─ langchain-tavily  (Search API)                       │
 │                                                          │
 │  Optional (Fallback):                                    │
 │  └─ duckduckgo_search (Traditional search)               │
