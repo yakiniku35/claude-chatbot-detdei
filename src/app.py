@@ -15,7 +15,7 @@ try:
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
     from langgraph.graph import StateGraph, END, add_messages
     from langgraph.checkpoint.memory import MemorySaver
-    from langchain_community.tools.tavily_search import TavilySearchResults
+    from langchain_tavily import TavilySearch
     LANGCHAIN_AVAILABLE = True
 except ImportError:
     LANGCHAIN_AVAILABLE = False
@@ -123,7 +123,7 @@ def init_tavily():
     
     if api_key:
         os.environ['TAVILY_API_KEY'] = api_key
-        return TavilySearchResults(max_results=4)
+        return TavilySearch(max_results=4)
     return None
 
 # 初始化 Supabase
@@ -235,7 +235,7 @@ async def tool_node(state: AgentState, search_tool):
         tool_args = tool_call["args"]
         tool_id = tool_call["id"]
         
-        if tool_name == "tavily_search_results_json":
+        if tool_name == "tavily_search":
             try:
                 search_results = await search_tool.ainvoke(tool_args)
                 tool_message = ToolMessage(
@@ -733,7 +733,7 @@ if prompt := st.chat_input("輸入訊息..."):
                     system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
 When analyzing content, provide DEI relevance, score (0-5), and legal considerations.
 
-**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search_results_json). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
+**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
 
 {language_instruction}
 
@@ -742,7 +742,7 @@ Reference policies:
                 else:
                     system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
 
-**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search_results_json). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
+**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
 
 {language_instruction}
 

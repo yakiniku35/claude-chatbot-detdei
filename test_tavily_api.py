@@ -32,11 +32,11 @@ def test_tavily_connection():
         
         print(f"✅ Found API key: {api_key[:10]}...")
         
-        # Test with TavilySearchResults
-        from langchain_community.tools.tavily_search import TavilySearchResults
+        # Test with TavilySearch
+        from langchain_tavily import TavilySearch
         
         os.environ['TAVILY_API_KEY'] = api_key
-        search = TavilySearchResults(max_results=2)
+        search = TavilySearch(max_results=2)
         
         print("\nTesting search query: 'DEI policy trends 2024'...")
         results = search.invoke("DEI policy trends 2024")
