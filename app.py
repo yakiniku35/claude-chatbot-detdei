@@ -126,7 +126,10 @@ def read_file(file):
             return "\n".join([p.text for p in doc.paragraphs])
         elif file.type == "text/plain":
             return file_bytes.decode("utf-8")
+        else:
+            raise ValueError(f"不支援的檔案類型: {file.type}")
     except Exception as e:
+        st.error(f"讀取檔案失敗: {str(e)}")
         return None
 
 # 網路搜尋
@@ -134,7 +137,8 @@ def search_web(query):
     try:
         with DDGS() as ddgs:
             return list(ddgs.text(query, max_results=3))
-    except:
+    except Exception as e:
+        st.warning(f"網路搜尋失敗: {str(e)}")
         return []
 
 def should_search(text):
