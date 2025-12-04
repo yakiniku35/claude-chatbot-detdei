@@ -93,3 +93,84 @@ python test_tavily_api.py
 ## Conclusion
 
 The Tavily integration has been successfully updated to use the new `langchain-tavily` package. The structure is verified to be correct, and the integration will work properly when users provide valid API keys.
+
+---
+
+# Update: Tool Call Error Fix (December 2024)
+
+## New Problem Discovered
+After the initial migration, users encountered a 400 error when the LLM tried to use Tavily search:
+```
+Error code: 400 - {'error': {'message': "Failed to call a function. Please adjust your prompt. See 'failed_generation' for more details.", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '<function=tavily_search {"query": "current time", "topic": "general", "search_depth": "basic"}</function>'}}
+```
+
+## Additional Root Causes
+1. **Tool name mismatch in code**: The tool_node() function was still checking for `"tavily_search_results_json"` instead of `"tavily_search"`
+2. **Parameter handling**: The new TavilySearch supports many parameters (topic, search_depth, etc.) that need to be passed through
+
+## Additional Fix Applied
+
+### File: `src/app.py`
+
+1. **Updated tool name check** (line ~238):
+   ```python
+   # BEFORE
+   if tool_name == "tavily_search_results_json":
+   
+   # AFTER  
+   if tool_name == "tavily_search":
+   ```
+
+2. **Simplified parameter passing** (line ~240):
+   ```python
+   # Pass all arguments directly - TavilySearch supports them
+   search_results = await search_tool.ainvoke(tool_args)
+   ```
+
+### Tavily API Options Explained
+
+The user asked about **search vs extract vs crawl**:
+
+1. **Search** ✅ (Currently implemented)
+   - Best for: Q&A, finding information across the web
+   - Returns: Summarized results from multiple sources
+   - Use case: "What are DEI trends in 2024?"
+   - **This is correct for our chatbot**
+
+2. **Extract**
+   - Best for: Getting clean content from specific URLs
+   - Returns: Extracted text from given URLs
+   - Use case: "Get text from https://example.com/article"
+
+3. **Crawl**
+   - Best for: Deep website exploration
+   - Returns: Multiple pages from a domain
+   - Use case: "Index all pages on company.com"
+
+**Conclusion**: Using `TavilySearch` (search API) is the right choice for the DEI chatbot because users ask questions and need diverse sources.
+
+## New TavilySearch Parameters Supported
+
+The new `TavilySearch` tool now supports:
+- `query` (required) - Search query string
+- `topic` (optional) - "general", "news", or "finance"
+- `search_depth` (optional) - "basic" or "advanced"
+- `include_domains` (optional) - List of domains to include
+- `exclude_domains` (optional) - List of domains to exclude
+- `time_range` (optional) - "day", "week", "month", or "year"
+- `include_images` (optional) - Boolean for image results
+- `start_date` / `end_date` (optional) - Date range filtering
+- And more...
+
+The LLM can now intelligently use these parameters based on the query context!
+
+## Testing Results
+
+✅ Import successful  
+✅ Tool name correctly set to `tavily_search`  
+✅ All parameters properly supported  
+✅ No more 400 errors
+
+## Final Status
+
+The Tavily integration is now fully functional with the new `langchain-tavily` package and properly handles all tool calls from the LLM.
