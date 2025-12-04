@@ -9,7 +9,7 @@
   - langchain-groq >= 0.2.0
   - langgraph >= 0.3.0
   - langgraph-checkpoint >= 2.0.0
-  - tavily-python >= 0.5.0
+  - langchain-tavily >= 0.2.0
 
 - [x] **Code integration complete**
   - Agent graph implementation

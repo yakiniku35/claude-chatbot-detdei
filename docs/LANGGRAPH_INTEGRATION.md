@@ -58,7 +58,7 @@ New dependencies:
 - `langchain-groq>=0.2.0`
 - `langgraph>=0.3.0`
 - `langgraph-checkpoint>=2.0.0`
-- `tavily-python>=0.5.0`
+- `langchain-tavily>=0.2.0`
 
 ### 2. Configure Tavily API Key
 
@@ -141,7 +141,7 @@ The agent maintains conversation state using LangGraph's checkpoint system.
 ### Search Tool Configuration
 
 ```python
-TavilySearchResults(max_results=4)
+TavilySearch(max_results=4)
 ```
 
 Returns top 4 results with:
