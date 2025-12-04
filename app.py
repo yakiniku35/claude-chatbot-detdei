@@ -355,24 +355,9 @@ with st.sidebar:
                     user_message = f"📎 **{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:10000]}"
                     if len(content) > 10000:
                         user_message += "\n\n*（檔案較長，已截取前 10000 字元）*"
-                    
-                    st.session_state.messages.append({
-                        "role": "user",
-                        "content": user_message
-                    })
-                    
-                    # 儲存到 Supabase
-                    if st.session_state.supabase_enabled and supabase_client:
-                        save_message_to_supabase(
-                            supabase_client,
-                            st.session_state.session_id,
-                            "user",
-                            user_message
-                        )
-                    
+
+                    add_and_save_message("user", user_message)
                     st.rerun()
-                else:
-                    st.error("無法讀取檔案")
     
     # 設定
     st.divider()
@@ -407,18 +392,20 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# 文字輸入
-if prompt := st.chat_input("輸入訊息..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # 儲存用戶訊息到 Supabase
+# 儲存訊息的輔助函數
+def add_and_save_message(role, content):
+    st.session_state.messages.append({"role": role, "content": content})
     if st.session_state.supabase_enabled and supabase_client:
         save_message_to_supabase(
             supabase_client,
             st.session_state.session_id,
-            "user",
-            prompt
+            role,
+            content
         )
+
+# 文字輸入
+if prompt := st.chat_input("輸入訊息..."):
+    add_and_save_message("user", prompt)
     
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -432,15 +419,5 @@ if prompt := st.chat_input("輸入訊息..."):
             )
             st.markdown(response)
     
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    # 儲存助手回應到 Supabase
-    if st.session_state.supabase_enabled and supabase_client:
-        save_message_to_supabase(
-            supabase_client,
-            st.session_state.session_id,
-            "assistant",
-            response
-        )
-    
+    add_and_save_message("assistant", response)
     st.rerun()
