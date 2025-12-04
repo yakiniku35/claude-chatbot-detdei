@@ -532,6 +532,30 @@ Refer to the following policies and executive orders for your analysis:
 # 主介面
 st.title("🤖 DEI 政策助手")
 
+# 初始化所有組件（在側邊欄之前）
+client = init_groq()
+if not client:
+    st.error("❌ 系統初始化失敗")
+    st.stop()
+
+# 初始化 LangChain 組件
+langchain_llm = init_langchain_groq()
+tavily_search = init_tavily()
+
+# 嘗試建立 agent graph
+agent_graph = None
+if LANGCHAIN_AVAILABLE and langchain_llm:
+    try:
+        agent_graph = create_agent_graph(langchain_llm, tavily_search)
+        if 'agent_mode' not in st.session_state:
+            st.session_state.agent_mode = True
+    except Exception as e:
+        st.warning(f"⚠️ Agent 初始化失敗，使用傳統模式: {str(e)}")
+        st.session_state.agent_mode = False
+
+# 初始化 Supabase
+supabase_client = init_supabase()
+
 # 側邊欄
 with st.sidebar:
     # API 狀態
@@ -643,30 +667,6 @@ with st.sidebar:
         }]
         st.session_state.file_processed = set()
         st.rerun()
-
-# 聊天區
-client = init_groq()
-if not client:
-    st.error("❌ 系統初始化失敗")
-    st.stop()
-
-# 初始化 LangChain 組件
-langchain_llm = init_langchain_groq()
-tavily_search = init_tavily()
-
-# 嘗試建立 agent graph
-agent_graph = None
-if LANGCHAIN_AVAILABLE and langchain_llm:
-    try:
-        agent_graph = create_agent_graph(langchain_llm, tavily_search)
-        if 'agent_mode' not in st.session_state:
-            st.session_state.agent_mode = True
-    except Exception as e:
-        st.warning(f"⚠️ Agent 初始化失敗，使用傳統模式: {str(e)}")
-        st.session_state.agent_mode = False
-
-# 初始化 Supabase (在這裡也初始化以供聊天使用)
-supabase_client = init_supabase()
 
 # 顯示對話歷史
 for msg in st.session_state.messages:
