@@ -179,13 +179,15 @@ def chat(client, messages, use_search=True):
     
     # 從 prompts.json 讀取執行命令
     prompts_data = load_prompts()
-    executive_orders_text = ""
+    executive_orders_parts = []
     if prompts_data.get('executive_orders'):
-        executive_orders_text = "\n\n📋 **參考政策：**\n"
+        executive_orders_parts.append("\n\n📋 **參考政策：**")
         for order in prompts_data['executive_orders']:
-            executive_orders_text += f"• **{order.get('title', '')}**: {order.get('description', '')}\n"
+            executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
+    executive_orders_text = "\n".join(executive_orders_parts)
+    
     # 從 prompts.json 讀取 document.policies 與 administration（如果存在）並摘要化
-    policies_text = ""
+    policies_parts = []
     doc = prompts_data.get('document')
     # 支援 document 為物件或單元素陣列
     if doc:
@@ -194,23 +196,27 @@ def chat(client, messages, use_search=True):
         if isinstance(doc, dict):
             policies = doc.get('policies') or doc.get('policy')
             if policies and isinstance(policies, dict):
-                policies_text = "\n\n📚 **政策摘要：**\n"
+                policies_parts.append("\n\n📚 **政策摘要：**")
                 for key, p in policies.items():
                     title = p.get('title') or key
                     summary = p.get('summary', '')
                     actions = p.get('actions', [])
-                    policies_text += f"**{title}**: {summary}\n"
+                    policies_parts.append(f"**{title}**: {summary}")
                     if actions:
-                        policies_text += "  - 動作: " + "; ".join(actions[:3]) + ("...\n" if len(actions) > 3 else "\n")
+                        action_text = "; ".join(actions[:3])
+                        if len(actions) > 3:
+                            action_text += "..."
+                        policies_parts.append(f"  - 動作: {action_text}")
             admin = doc.get('administration')
             if admin and isinstance(admin, dict):
-                policies_text += "\n🏛️ **管理團隊：**\n"
+                policies_parts.append("\n🏛️ **管理團隊：**")
                 president = admin.get('president')
                 term = admin.get('term')
                 if president:
-                    policies_text += f"- 主席/總統: {president}\n"
+                    policies_parts.append(f"- 主席/總統: {president}")
                 if term:
-                    policies_text += f"- 任期: {term}\n"
+                    policies_parts.append(f"- 任期: {term}")
+    policies_text = "\n".join(policies_parts)
     
     # 準備一般系統提示（適用於非深入法規分析的對話）
     system_general = f"""
