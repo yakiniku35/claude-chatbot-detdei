@@ -85,7 +85,7 @@ def init_groq():
         return Groq(api_key=api_key)
     return None
 
-# 初始化 LangChain Groq
+# 初始化 LangChain Groq (with fallback models)
 def init_langchain_groq():
     if not LANGCHAIN_AVAILABLE:
         return None
@@ -99,13 +99,53 @@ def init_langchain_groq():
     if not api_key and 'GROQ_API_KEY' in os.environ:
         api_key = os.environ.get('GROQ_API_KEY')
     
-    if api_key:
-        return ChatGroq(
-            model="llama-3.3-70b-versatile",
-            api_key=api_key,
-            temperature=0.7
-        )
-    return None
+    if not api_key:
+        return None
+    
+    # 模型列表：按優先順序排列，如果達到上限會自動切換
+    models = [
+        "llama-3.3-70b-versatile",      # 最強大的模型
+        "llama-3.1-70b-versatile",      # 備用大模型
+        "llama-3.2-90b-text-preview",   # 預覽大模型
+        "llama-3.1-8b-instant",         # 快速輕量模型
+        "mixtral-8x7b-32768",           # Mixtral 模型
+        "gemma2-9b-it",                 # Google Gemma 模型
+        "llama3-70b-8192"               # 舊版 LLaMA 模型
+    ]
+    
+    # 如果已經有失敗的模型記錄，從列表中移除
+    if 'failed_models' not in st.session_state:
+        st.session_state.failed_models = set()
+    
+    # 過濾掉已知失敗的模型
+    available_models = [m for m in models if m not in st.session_state.failed_models]
+    
+    if not available_models:
+        st.error("❌ 所有模型都已達到上限，請稍後再試或升級您的 Groq 方案")
+        return None
+    
+    # 使用第一個可用的模型
+    selected_model = available_models[0]
+    st.session_state.current_model = selected_model
+    
+    return ChatGroq(
+        model=selected_model,
+        api_key=api_key,
+        temperature=0.7
+    )
+
+# 當模型失敗時，切換到下一個模型
+def switch_to_next_model():
+    if 'current_model' in st.session_state:
+        st.session_state.failed_models.add(st.session_state.current_model)
+        st.warning(f"⚠️ 模型 {st.session_state.current_model} 達到上限，正在切換到備用模型...")
+    
+    # 重新初始化
+    new_llm = init_langchain_groq()
+    if new_llm:
+        st.success(f"✅ 已切換到模型：{st.session_state.current_model}")
+        st.rerun()
+    return new_llm
 
 # 初始化 Tavily
 def init_tavily():
@@ -399,7 +439,14 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
         return str(final_message)
         
     except Exception as e:
-        return f"❌ Agent 執行失敗: {str(e)}"
+        error_msg = str(e)
+        # 檢查是否為 rate limit 錯誤
+        if "rate_limit" in error_msg.lower() or "429" in error_msg:
+            # 切換到下一個模型
+            new_llm = switch_to_next_model()
+            if new_llm:
+                return "⚠️ 模型已切換，請重新發送您的訊息"
+        return f"❌ Agent 執行失敗: {error_msg}"
 
 # AI 對話 (原始 Groq 方法，作為備援)
 def chat(client, messages, use_search=True):
@@ -533,6 +580,10 @@ Refer to the following policies and executive orders for your analysis:
 
 # 主介面
 st.title("🤖 DEI 政策助手")
+
+# 顯示當前使用的模型
+if 'current_model' in st.session_state:
+    st.info(f"🔧 當前使用模型：**{st.session_state.current_model}**")
 
 # 初始化所有組件（在側邊欄之前）
 client = init_groq()
