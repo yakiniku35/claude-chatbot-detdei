@@ -1,0 +1,57 @@
+{
+  "executive_orders": [
+    {
+      "title": "End Illegal Discrimination and Restore Merit-Based Opportunity",
+      "eo_number": "14173",
+      "description": "End illegal preferential treatment or discrimination in federal hiring, promotion, and funding. Restore fairness based on qualifications and merit.",
+      "actions": [
+        "Stop identity-based preferences in recruitment, promotion, and funding",
+        "Ensure all agencies follow merit-based evaluations",
+        "Align policies with the Civil Rights Act of 1964"
+      ],
+      "purpose": "Restore merit-based equal opportunity in the federal government."
+    },
+    {
+      "title": "Terminate Radical and Wasteful Government DEI Programs",
+      "eo_number": "14171",
+      "description": "Critique and remove radical DEI programs that waste resources and promote ideological bias in federal agencies.",
+      "actions": [
+        "Terminate DEI-related training, programs, and initiatives",
+        "Emphasize performance and merit as core management criteria",
+        "Require agencies to report program terminations"
+      ],
+      "purpose": "Eliminate unnecessary DEI programs and redirect focus to performance and ability."
+    },
+    {
+      "title": "Defend Women from Gender Ideology Extremism and Restore Biological Truth",
+      "eo_number": "14170",
+      "description": "Protect women’s rights in sports, education, and public spaces, maintaining clear distinctions between biological sex and gender identity.",
+      "actions": [
+        "Mandate federal policies to distinguish biological sex from gender identity",
+        "Ensure equal opportunities and safety for women in all relevant areas",
+        "Ban funding or support for programs promoting gender ideology"
+      ],
+      "purpose": "Safeguard women's rights and uphold biological sex distinctions in federal policies."
+    },
+    {
+      "title": "Unleash American Energy",
+      "eo_number": "14154",
+      "description": "Remove restrictions on energy production, including oil, gas, and nuclear, to promote energy independence and economic growth.",
+      "actions": [
+        "Cancel or modify regulations limiting energy development",
+        "Promote freer development of domestic energy resources",
+        "Streamline permitting processes for energy projects"
+      ],
+      "purpose": "Strengthen U.S. energy independence and boost economic growth."
+    }
+  ],
+  "administration": {
+    "president": "Donald J. Trump",
+    "term": "2025-2029",
+    "policy_focus": [
+      "Civil Rights Integrity",
+      "Gender Policy Reform",
+      "Energy Independence"
+    ]
+  }
+}
