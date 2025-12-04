@@ -53,9 +53,13 @@ if 'supabase_enabled' not in st.session_state:
 def init_groq():
     # Support both Streamlit secrets and environment variables
     api_key = None
-    if 'groq_api_key' in st.secrets:
-        api_key = st.secrets['groq_api_key']
-    elif 'GROQ_API_KEY' in os.environ:
+    try:
+        if 'groq_api_key' in st.secrets:
+            api_key = st.secrets['groq_api_key']
+    except:
+        pass
+    
+    if not api_key and 'GROQ_API_KEY' in os.environ:
         api_key = os.environ.get('GROQ_API_KEY')
     
     if api_key:
@@ -68,7 +72,13 @@ def init_supabase():
     if not SUPABASE_AVAILABLE:
         return None
     try:
-        if 'supabase_url' in st.secrets and 'supabase_key' in st.secrets:
+        has_supabase_secrets = False
+        try:
+            has_supabase_secrets = 'supabase_url' in st.secrets and 'supabase_key' in st.secrets
+        except:
+            pass
+        
+        if has_supabase_secrets:
             return create_client(st.secrets['supabase_url'], st.secrets['supabase_key'])
     except Exception as e:
         st.error(f"Supabase 初始化失敗: {str(e)}")
@@ -288,7 +298,12 @@ st.title("🤖 DEI 政策助手")
 # 側邊欄
 with st.sidebar:
     # API 狀態
-    if 'groq_api_key' not in st.secrets and 'GROQ_API_KEY' not in os.environ:
+    try:
+        has_secret = 'groq_api_key' in st.secrets
+    except:
+        has_secret = False
+    
+    if not has_secret and 'GROQ_API_KEY' not in os.environ:
         st.error("⚠️ 系統未設定，請聯絡管理員")
         st.stop()
     
