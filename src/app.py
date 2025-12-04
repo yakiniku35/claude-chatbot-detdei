@@ -235,6 +235,8 @@ async def tool_node(state: AgentState, search_tool):
         tool_args = tool_call["args"]
         tool_id = tool_call["id"]
         
+        # Note: TavilySearch (from langchain-tavily) uses tool name "tavily_search"
+        # Previously TavilySearchResults used "tavily_search_results_json"
         if tool_name == "tavily_search":
             try:
                 search_results = await search_tool.ainvoke(tool_args)
