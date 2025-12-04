@@ -733,12 +733,16 @@ if prompt := st.chat_input("輸入訊息..."):
                     system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
 When analyzing content, provide DEI relevance, score (0-5), and legal considerations.
 
+**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search_results_json). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
+
 {language_instruction}
 
 Reference policies:
 {executive_orders_text}{policies_text}"""
                 else:
                     system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
+
+**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search_results_json). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
 
 {language_instruction}
 
