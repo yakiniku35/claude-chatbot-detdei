@@ -5,8 +5,29 @@ import docx
 import io
 import json
 import os
-from duckduckgo_search import DDGS
-# Supabase is optional. Guard the import so the app can run without the package.
+from typing import TypedDict, Annotated, Literal
+from datetime import datetime
+import uuid
+
+# LangChain imports
+try:
+    from langchain_groq import ChatGroq
+    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+    from langgraph.graph import StateGraph, END, add_messages
+    from langgraph.checkpoint.memory import MemorySaver
+    from langchain_community.tools.tavily_search import TavilySearchResults
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+
+# Fallback to DuckDuckGo if Tavily not available
+try:
+    from duckduckgo_search import DDGS
+    DDGS_AVAILABLE = True
+except ImportError:
+    DDGS_AVAILABLE = False
+
+# Supabase is optional
 try:
     from supabase import create_client, Client
     SUPABASE_AVAILABLE = True
@@ -14,8 +35,6 @@ except Exception:
     create_client = None
     Client = None
     SUPABASE_AVAILABLE = False
-from datetime import datetime
-import uuid
 
 # 讀取 prompts.json
 @st.cache_data
@@ -64,6 +83,47 @@ def init_groq():
     
     if api_key:
         return Groq(api_key=api_key)
+    return None
+
+# 初始化 LangChain Groq
+def init_langchain_groq():
+    if not LANGCHAIN_AVAILABLE:
+        return None
+    api_key = None
+    try:
+        if 'groq_api_key' in st.secrets:
+            api_key = st.secrets['groq_api_key']
+    except:
+        pass
+    
+    if not api_key and 'GROQ_API_KEY' in os.environ:
+        api_key = os.environ.get('GROQ_API_KEY')
+    
+    if api_key:
+        return ChatGroq(
+            model="llama-3.3-70b-versatile",
+            api_key=api_key,
+            temperature=0.7
+        )
+    return None
+
+# 初始化 Tavily
+def init_tavily():
+    if not LANGCHAIN_AVAILABLE:
+        return None
+    api_key = None
+    try:
+        if 'tavily_api_key' in st.secrets:
+            api_key = st.secrets['tavily_api_key']
+    except:
+        pass
+    
+    if not api_key and 'TAVILY_API_KEY' in os.environ:
+        api_key = os.environ.get('TAVILY_API_KEY')
+    
+    if api_key:
+        os.environ['TAVILY_API_KEY'] = api_key
+        return TavilySearchResults(max_results=4)
     return None
 
 # 初始化 Supabase
@@ -142,14 +202,90 @@ def read_file(file):
         st.error(f"讀取檔案失敗: {str(e)}")
         return None
 
-# 網路搜尋
+# 網路搜尋 (DuckDuckGo fallback)
 def search_web(query):
+    if not DDGS_AVAILABLE:
+        return []
     try:
         with DDGS() as ddgs:
             return list(ddgs.text(query, max_results=3))
     except Exception as e:
         st.warning(f"網路搜尋失敗: {str(e)}")
         return []
+
+# LangGraph Agent State
+class AgentState(TypedDict):
+    messages: Annotated[list, add_messages]
+
+# Agent 節點：模型決策
+async def agent_model(state: AgentState, llm, tools):
+    """LLM 決定是否需要使用工具"""
+    llm_with_tools = llm.bind_tools(tools=tools) if tools else llm
+    result = await llm_with_tools.ainvoke(state["messages"])
+    return {"messages": [result]}
+
+# Agent 節點：工具執行
+async def tool_node(state: AgentState, search_tool):
+    """執行搜尋工具"""
+    tool_calls = state["messages"][-1].tool_calls if hasattr(state["messages"][-1], "tool_calls") else []
+    tool_messages = []
+    
+    for tool_call in tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_id = tool_call["id"]
+        
+        if tool_name == "tavily_search_results_json":
+            try:
+                search_results = await search_tool.ainvoke(tool_args)
+                tool_message = ToolMessage(
+                    content=str(search_results),
+                    tool_call_id=tool_id,
+                    name=tool_name
+                )
+                tool_messages.append(tool_message)
+            except Exception as e:
+                error_msg = f"搜尋失敗: {str(e)}"
+                tool_message = ToolMessage(
+                    content=error_msg,
+                    tool_call_id=tool_id,
+                    name=tool_name
+                )
+                tool_messages.append(tool_message)
+    
+    return {"messages": tool_messages}
+
+# Agent 路由：決定下一步
+def tools_router(state: AgentState) -> Literal["tool_node", "__end__"]:
+    """決定是否需要使用工具"""
+    last_message = state["messages"][-1]
+    
+    if hasattr(last_message, "tool_calls") and len(last_message.tool_calls) > 0:
+        return "tool_node"
+    else:
+        return END
+
+# 建立 LangGraph Agent
+@st.cache_resource
+def create_agent_graph(_llm, _search_tool):
+    """建立並編譯 agent graph"""
+    memory = MemorySaver()
+    graph_builder = StateGraph(AgentState)
+    
+    # 建立節點的 lambda 包裝器
+    async def model_wrapper(state):
+        return await agent_model(state, _llm, [_search_tool] if _search_tool else [])
+    
+    async def tool_wrapper(state):
+        return await tool_node(state, _search_tool)
+    
+    graph_builder.add_node("model", model_wrapper)
+    graph_builder.add_node("tool_node", tool_wrapper)
+    graph_builder.set_entry_point("model")
+    graph_builder.add_conditional_edges("model", tools_router)
+    graph_builder.add_edge("tool_node", "model")
+    
+    return graph_builder.compile(checkpointer=memory)
 
 def should_search(text):
     keywords = [
@@ -226,7 +362,44 @@ def is_analysis_request(text):
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in analysis_keywords)
 
-# AI 對話
+# AI 對話 (使用 LangGraph Agent)
+async def chat_with_agent(graph, messages, thread_id, system_prompt):
+    """使用 LangGraph agent 進行對話"""
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        # 轉換訊息格式
+        langchain_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                continue  # 系統訊息會在節點中處理
+            elif msg["role"] == "user":
+                langchain_messages.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                langchain_messages.append(AIMessage(content=msg["content"]))
+        
+        # 添加系統提示作為第一條訊息
+        if langchain_messages:
+            langchain_messages[0] = HumanMessage(
+                content=f"{system_prompt}\n\nUser: {langchain_messages[0].content}"
+            )
+        
+        # 執行 agent
+        result = await graph.ainvoke(
+            {"messages": langchain_messages},
+            config=config
+        )
+        
+        # 提取最終回應
+        final_message = result["messages"][-1]
+        if hasattr(final_message, "content"):
+            return final_message.content
+        return str(final_message)
+        
+    except Exception as e:
+        return f"❌ Agent 執行失敗: {str(e)}"
+
+# AI 對話 (原始 Groq 方法，作為備援)
 def chat(client, messages, use_search=True):
     search_context = ""
     last_msg = next((m for m in reversed(messages) if m["role"] == "user"), None)
@@ -443,6 +616,20 @@ with st.sidebar:
     search_enabled = st.toggle("🌐 網路搜尋", value=True, help="AI 會自動搜尋最新資訊")
     st.session_state['search'] = search_enabled
     
+    # Agent 模式切換
+    if LANGCHAIN_AVAILABLE and agent_graph:
+        agent_enabled = st.toggle(
+            "🤖 智能搜尋模式 (LangGraph)", 
+            value=st.session_state.get('agent_mode', True),
+            help="使用 LangGraph + Tavily 進行智能搜尋決策"
+        )
+        st.session_state['agent_mode'] = agent_enabled
+        
+        if agent_enabled and tavily_search:
+            st.success("✨ Tavily 搜尋已啟用")
+        elif agent_enabled:
+            st.warning("⚠️ Tavily API 未設定，使用基礎模式")
+    
     # 清除
     st.divider()
     if st.button("🗑️ 清除對話", use_container_width=True):
@@ -462,6 +649,21 @@ client = init_groq()
 if not client:
     st.error("❌ 系統初始化失敗")
     st.stop()
+
+# 初始化 LangChain 組件
+langchain_llm = init_langchain_groq()
+tavily_search = init_tavily()
+
+# 嘗試建立 agent graph
+agent_graph = None
+if LANGCHAIN_AVAILABLE and langchain_llm:
+    try:
+        agent_graph = create_agent_graph(langchain_llm, tavily_search)
+        if 'agent_mode' not in st.session_state:
+            st.session_state.agent_mode = True
+    except Exception as e:
+        st.warning(f"⚠️ Agent 初始化失敗，使用傳統模式: {str(e)}")
+        st.session_state.agent_mode = False
 
 # 初始化 Supabase (在這裡也初始化以供聊天使用)
 supabase_client = init_supabase()
@@ -490,13 +692,82 @@ if prompt := st.chat_input("輸入訊息..."):
         st.markdown(prompt)
     
     with st.chat_message("assistant"):
-        with st.spinner("思考中..."):
-            response = chat(
-                client,
-                st.session_state.messages,
-                st.session_state.get('search', True)
-            )
-            st.markdown(response)
+        # 決定使用 agent 還是傳統方法
+        use_agent = (
+            st.session_state.get('agent_mode', False) and 
+            agent_graph is not None and 
+            st.session_state.get('search', True)
+        )
+        
+        if use_agent:
+            with st.spinner("🔍 智能搜尋中..."):
+                # 準備系統提示
+                user_language = detect_language(prompt)
+                language_instruction = get_language_instruction(user_language)
+                requesting_analysis = is_analysis_request(prompt)
+                
+                prompts_data = load_prompts()
+                executive_orders_parts = []
+                if prompts_data.get('executive_orders'):
+                    executive_orders_parts.append("\n\n📋 **參考政策：**")
+                    for order in prompts_data['executive_orders']:
+                        executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
+                executive_orders_text = "\n".join(executive_orders_parts)
+                
+                policies_parts = []
+                doc = prompts_data.get('document')
+                if doc:
+                    if isinstance(doc, list) and len(doc) > 0:
+                        doc = doc[0]
+                    if isinstance(doc, dict):
+                        policies = doc.get('policies') or doc.get('policy')
+                        if policies and isinstance(policies, dict):
+                            policies_parts.append("\n\n📚 **政策摘要：**")
+                            for key, p in policies.items():
+                                title = p.get('title') or key
+                                summary = p.get('summary', '')
+                                policies_parts.append(f"**{title}**: {summary}")
+                policies_text = "\n".join(policies_parts)
+                
+                if requesting_analysis:
+                    system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
+When analyzing content, provide DEI relevance, score (0-5), and legal considerations.
+
+{language_instruction}
+
+Reference policies:
+{executive_orders_text}{policies_text}"""
+                else:
+                    system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
+
+{language_instruction}
+
+{executive_orders_text}{policies_text}"""
+                
+                # 使用 async 執行
+                import asyncio
+                try:
+                    response = asyncio.run(chat_with_agent(
+                        agent_graph,
+                        st.session_state.messages,
+                        st.session_state.session_id,
+                        system_prompt
+                    ))
+                    # 檢查是否使用了搜尋
+                    if "tavily" in str(response).lower() or any(keyword in prompt.lower() for keyword in ["最新", "latest", "2024", "2025"]):
+                        response += "\n\n🌐 *此回覆使用智能搜尋*"
+                except Exception as e:
+                    st.error(f"Agent 執行錯誤: {str(e)}")
+                    response = "抱歉，發生錯誤。請稍後再試。"
+        else:
+            with st.spinner("思考中..."):
+                response = chat(
+                    client,
+                    st.session_state.messages,
+                    st.session_state.get('search', True)
+                )
+        
+        st.markdown(response)
     
     add_and_save_message("assistant", response)
     st.rerun()
