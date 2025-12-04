@@ -37,7 +37,7 @@ st.set_page_config(
 if 'messages' not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant",
-        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
+        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊\n\n---\n\n👋 Hello! I'm the DEI Policy Assistant.\n\nI can help you:\n• 💬 Chat and answer questions\n• 📋 Check content for DEI policy compliance\n• 💡 Provide improvement suggestions\n\nHow can I help you today? 😊"
     }]
 
 if 'file_processed' not in st.session_state:
@@ -152,8 +152,59 @@ def search_web(query):
         return []
 
 def should_search(text):
-    keywords = ["最新", "近期", "現在", "查詢", "搜尋", "2024", "2025", "案例", "趨勢", "統計", "研究"]
+    keywords = [
+        # 中文關鍵字
+        "最新", "近期", "現在", "查詢", "搜尋", "案例", "趨勢", "統計", "研究",
+        # 英文關鍵字
+        "latest", "recent", "current", "search", "query", "case", "trend", "statistics", "research",
+        # 年份
+        "2024", "2025"
+    ]
     return any(k in text.lower() for k in keywords)
+
+# 檢測使用者語言
+def detect_language(text):
+    """
+    檢測使用者輸入的語言
+    Returns: 'zh-TW', 'zh-CN', 'en', 'ja', 等
+    """
+    # 檢測中文繁體
+    traditional_chars = ['繁', '體', '臺', '灣', '們', '個', '這', '樣', '嗎', '麼', '為', '與']
+    simplified_chars = ['简', '体', '台', '湾', '们', '个', '这', '样', '吗', '么', '为', '与']
+    
+    has_traditional = any(char in text for char in traditional_chars)
+    has_simplified = any(char in text for char in simplified_chars)
+    has_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
+    has_japanese = any('\u3040' <= char <= '\u309f' or '\u30a0' <= char <= '\u30ff' for char in text)
+    has_korean = any('\uac00' <= char <= '\ud7af' for char in text)
+    
+    # 判斷語言
+    if has_traditional and not has_simplified:
+        return 'zh-TW'
+    elif has_simplified:
+        return 'zh-CN'
+    elif has_japanese:
+        return 'ja'
+    elif has_korean:
+        return 'ko'
+    elif has_chinese:
+        return 'zh-TW'  # 預設繁體中文
+    else:
+        return 'en'
+
+# 獲取語言對應的系統提示
+def get_language_instruction(lang_code):
+    """
+    根據語言代碼返回相應的語言指示
+    """
+    language_map = {
+        'zh-TW': 'Please respond in Traditional Chinese (繁體中文).',
+        'zh-CN': 'Please respond in Simplified Chinese (简体中文).',
+        'en': 'Please respond in English.',
+        'ja': 'Please respond in Japanese (日本語).',
+        'ko': 'Please respond in Korean (한국어).'
+    }
+    return language_map.get(lang_code, 'Please respond in the same language as the user.')
 
 # 判斷使用者是否要求進行 DEI 分析
 def is_analysis_request(text):
@@ -162,10 +213,14 @@ def is_analysis_request(text):
     Returns: True if requesting analysis, False for casual conversation
     """
     analysis_keywords = [
+        # 中文關鍵字
         "檢查", "分析", "評估", "審查", "違反", "符合", "遵守", "等級",
         "dei", "政策", "歧視", "刻板印象", "排他", "冒犯", "不當",
-        "請幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反",
-        "check", "analyze", "review", "violate", "comply", "policy","討論"
+        "請幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反", "討論",
+        # 英文關鍵字
+        "check", "analyze", "analyse", "review", "assess", "evaluate", 
+        "violate", "violation", "comply", "compliance", "policy", "discrimination",
+        "stereotype", "offensive", "inappropriate", "inclusive", "diversity"
     ]
     
     text_lower = text.lower()
@@ -175,6 +230,12 @@ def is_analysis_request(text):
 def chat(client, messages, use_search=True):
     search_context = ""
     last_msg = next((m for m in reversed(messages) if m["role"] == "user"), None)
+    
+    # 檢測使用者語言
+    user_language = 'zh-TW'  # 預設繁體中文
+    if last_msg:
+        user_language = detect_language(last_msg["content"])
+    language_instruction = get_language_instruction(user_language)
     
     if use_search and last_msg and should_search(last_msg["content"]):
         results = search_web(last_msg["content"][:100])
@@ -230,9 +291,11 @@ def chat(client, messages, use_search=True):
     
     # 準備一般系統提示（適用於非深入法規分析的對話）
     system_general = f"""
-    你是 DEI（Diversity, Equity, and Inclusion）政策檢查助手。請以專業、友善且中立的語氣回答使用者問題。
-
-    當使用者要求政策背景或參考資料時，可引用下列摘要：
+    You are a DEI (Diversity, Equity, and Inclusion) policy assistant. Please respond in a professional, friendly, and neutral tone.
+    
+    {language_instruction}
+    
+    When users request policy background or reference materials, you may cite the following summaries:
     {executive_orders_text}
     {policies_text}
     """
@@ -254,9 +317,10 @@ Format your output as:
 - Legal/Regulatory Consideration: [brief explanation, if applicable]
 
 Be concise but clear, and only include points directly related to DEI.
-use the same language as the user.
-IF they use traditional Chinese, please use Traditional Chinese.
-And refer to the following policies and executive orders for your analysis:
+
+{language_instruction}
+
+Refer to the following policies and executive orders for your analysis:
 {executive_orders_text}{policies_text}
 """
     else:
