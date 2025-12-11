@@ -1,6 +1,6 @@
 # DEI Policy Chatbot
-
-A Streamlit-based chatbot application for analyzing content against Diversity, Equity, and Inclusion (DEI) policies.
+- [link](https://yakiniku35-claude-chatbot-detdei-srcapp-sesxar.streamlit.app/)
+- A Streamlit-based chatbot application for analyzing content against Diversity, Equity, and Inclusion (DEI) policies.
 
 ## ✨ New: Intelligent Search with LangGraph
 
