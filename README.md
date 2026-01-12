@@ -18,6 +18,7 @@ streamlit run src/app.py
 - [Full README](docs/README.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [LangGraph Integration Guide](docs/LANGGRAPH_INTEGRATION.md) 🆕
+- [Testing & Quality Assurance](docs/TESTING.md) 🆕
 - [Security Policy](docs/security.md)
 - [Improvements Summary](docs/IMPROVEMENTS_SUMMARY.md)
 
