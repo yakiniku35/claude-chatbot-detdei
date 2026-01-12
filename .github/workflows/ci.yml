@@ -9,7 +9,9 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+
     steps:
     - uses: actions/checkout@v4
     
@@ -48,7 +50,9 @@ jobs:
 
   security-check:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+
     steps:
     - uses: actions/checkout@v4
     

@@ -2,14 +2,8 @@
 Unit tests for the DEI Policy Chatbot
 """
 
-import sys
-import os
-
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-import pytest  # noqa: E402
-from app import (  # noqa: E402
+import pytest
+from app import (
     detect_language,
     get_language_instruction,
     is_analysis_request,
