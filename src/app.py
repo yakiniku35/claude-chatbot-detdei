@@ -555,7 +555,7 @@ Refer to the following policies and executive orders for your analysis:
         msgs.extend([{"role": m["role"], "content": m["content"]} for m in messages])
         
         response = client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model="llama-3.3-70b-versatile",
             messages=msgs,
             temperature=0.7,
             max_tokens=2500
