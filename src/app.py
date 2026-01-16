@@ -163,6 +163,7 @@ def init_tavily():
     
     if api_key:
         os.environ['TAVILY_API_KEY'] = api_key
+        # 使用官方 TavilySearch 工具，支援所有官方參數
         return TavilySearch(max_results=4)
     return None
 
@@ -275,10 +276,10 @@ async def tool_node(state: AgentState, search_tool):
         tool_args = tool_call["args"]
         tool_id = tool_call["id"]
         
+        # LangChain TavilySearch 的工具名稱是 "tavily_search"
         if tool_name == "tavily_search":
             try:
-                # TavilySearch accepts query and optional parameters
-                # Pass all arguments directly
+                # 使用 ainvoke 進行異步調用，傳遞所有參數
                 search_results = await search_tool.ainvoke(tool_args)
                 tool_message = ToolMessage(
                     content=str(search_results),
