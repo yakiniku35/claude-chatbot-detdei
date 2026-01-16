@@ -32,10 +32,35 @@ streamlit run src/app.py
 Required:
 - `GROQ_API_KEY` - For AI chat functionality
 
-Optional (for enhanced search):
-- `TAVILY_API_KEY` - For intelligent web search with LangGraph
+Optional:
+- `TAVILY_API_KEY` - For intelligent web search with LangGraph (1,000 free searches/month)
+- `SUPABASE_URL` + `SUPABASE_KEY` - For chat history persistence
 
 Configure in `.streamlit/secrets.toml` or as environment variables.
+
+### Quick Setup
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure API keys (copy and edit)
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+
+# Run the application
+streamlit run src/app.py
+```
+
+### Enable Tavily Search
+
+1. Get a free API key from [Tavily.com](https://tavily.com)
+2. Add to `.streamlit/secrets.toml`:
+   ```toml
+   tavily_api_key = "tvly-your-key-here"
+   ```
+3. In the app sidebar, enable **🤖 智能搜尋模式 (LangGraph)**
+
+See [TAVILY_QUICKSTART.md](docs/TAVILY_QUICKSTART.md) for details.
 
 ## License
 
