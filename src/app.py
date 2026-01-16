@@ -330,15 +330,50 @@ def create_agent_graph(_llm, _search_tool):
     return graph_builder.compile(checkpointer=memory)
 
 def should_search(text):
-    keywords = [
-        # 中文關鍵字
-        "最新", "近期", "現在", "查詢", "搜尋", "案例", "趨勢", "統計", "研究",
-        # 英文關鍵字
-        "latest", "recent", "current", "search", "query", "case", "trend", "statistics", "research",
-        # 年份
-        "2024", "2025"
+    """
+    判斷是否應該進行網路搜尋
+    更嚴格的判斷標準，避免過度使用搜尋
+    """
+    # 明確的搜尋意圖關鍵字
+    explicit_search_keywords = [
+        # 中文
+        "搜尋", "查詢", "找一下", "幫我找", "search", "find",
+        # 英文
+        "search for", "find me", "look up", "look for"
     ]
-    return any(k in text.lower() for k in keywords)
+    
+    # 時效性關鍵字（需要最新資訊）
+    time_sensitive_keywords = [
+        # 中文
+        "最新", "近期", "現在", "當前", "目前", "今年", "本月",
+        # 英文  
+        "latest", "recent", "current", "now", "today", "this year", "2024", "2025"
+    ]
+    
+    # 資料查詢關鍵字
+    data_keywords = [
+        # 中文
+        "統計", "數據", "報告", "研究", "案例", "新聞",
+        # 英文
+        "statistics", "data", "report", "research", "study", "case", "news"
+    ]
+    
+    text_lower = text.lower()
+    
+    # 明確搜尋意圖
+    if any(keyword in text_lower for keyword in explicit_search_keywords):
+        return True
+    
+    # 時效性查詢 + 資料查詢
+    has_time_sensitive = any(keyword in text_lower for keyword in time_sensitive_keywords)
+    has_data_request = any(keyword in text_lower for keyword in data_keywords)
+    
+    # 兩者都有才觸發搜尋
+    if has_time_sensitive and has_data_request:
+        return True
+    
+    # 預設不搜尋
+    return False
 
 # 檢測使用者語言
 def detect_language(text):
@@ -786,7 +821,19 @@ if prompt := st.chat_input("輸入訊息..."):
                     system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
 When analyzing content, provide DEI relevance, score (0-5), and legal considerations.
 
-**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
+**SEARCH TOOL USAGE GUIDELINES**:
+You have access to tavily_search. Only use it when:
+✓ User explicitly asks to "search" or "find" something
+✓ User asks about "latest", "recent", "current" information
+✓ User asks about specific statistics, data, or research from 2024-2025
+✓ User wants real-world examples, cases, or news
+
+DO NOT use search for:
+✗ General DEI concepts and definitions
+✗ Analyzing uploaded documents or provided content
+✗ Casual conversation
+✗ Questions you can answer from your training data
+✗ Policy explanations already in the reference materials
 
 {language_instruction}
 
@@ -795,7 +842,22 @@ Reference policies:
                 else:
                     system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
 
-**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
+**SEARCH TOOL USAGE GUIDELINES**:
+You have access to tavily_search. Only use it when:
+✓ User explicitly asks to "search", "find", or "查詢"
+✓ User asks about "latest", "recent", "最新", "近期" information
+✓ User asks about specific current events, news, or statistics from 2024-2025
+✓ User wants real-world examples or recent cases
+✓ Information is likely to have changed recently
+
+DO NOT use search for:
+✗ General questions about DEI concepts
+✗ Casual greetings or small talk
+✗ Questions you can answer from training data
+✗ Analyzing content the user has provided
+✗ Explaining policies from reference materials
+
+Be conservative with search usage to save API credits.
 
 {language_instruction}
 
