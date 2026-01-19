@@ -345,7 +345,7 @@ def should_search(text):
     # 時效性關鍵字（需要最新資訊）
     time_sensitive_keywords = [
         # 中文
-        "最新", "近期", "現在", "當前", "目前", "今年", "本月",
+        "最新", "近期", "現在", "當前", "目前", "今年", "本月","今天","最近"
         # 英文  
         "latest", "recent", "current", "now", "today", "this year", "2024", "2025"
     ]
@@ -353,7 +353,7 @@ def should_search(text):
     # 資料查詢關鍵字
     data_keywords = [
         # 中文
-        "統計", "數據", "報告", "研究", "案例", "新聞",
+        "統計", "數據", "報告", "研究", "案例", "新聞","數量",
         # 英文
         "statistics", "data", "report", "research", "study", "case", "news"
     ]
