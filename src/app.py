@@ -104,6 +104,7 @@ def init_langchain_groq():
     
     # 模型列表：按優先順序排列，如果達到上限會自動切換
     models = [
+        "openai/gpt-oss-120b",
         "llama-3.3-70b-versatile",      # 最強大的模型
         "llama-3.1-70b-versatile",      # 備用大模型
         "llama-3.2-90b-text-preview",   # 預覽大模型
@@ -138,12 +139,12 @@ def init_langchain_groq():
 def switch_to_next_model():
     if 'current_model' in st.session_state:
         st.session_state.failed_models.add(st.session_state.current_model)
-        st.warning(f"⚠️ 模型 {st.session_state.current_model} 達到上限，正在切換到備用模型...")
+        st.warning(f"模型 {st.session_state.current_model} 達到上限，正在切換到備用模型...")
     
     # 重新初始化
     new_llm = init_langchain_groq()
     if new_llm:
-        st.success(f"✅ 已切換到模型：{st.session_state.current_model}")
+        st.success(f"已切換到模型：{st.session_state.current_model}")
         st.rerun()
     return new_llm
 
