@@ -615,7 +615,7 @@ Refer to the following policies and executive orders for your analysis:
             return f"❌ 發生錯誤：{error_msg}"
 
 # 主介面
-st.title("🤖 DEI 政策助手")
+st.title("DEI 政策助手")
 
 # 顯示當前使用的模型
 if 'current_model' in st.session_state:
