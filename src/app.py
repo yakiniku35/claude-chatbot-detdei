@@ -481,8 +481,8 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
             # 切換到下一個模型
             new_llm = switch_to_next_model()
             if new_llm:
-                return "⚠️ 模型已切換，請重新發送您的訊息"
-        return f"❌ Agent 執行失敗: {error_msg}"
+                return "模型已切換，請重新發送您的訊息"
+        return f"Agent 執行失敗: {error_msg}"
 
 # AI 對話 (原始 Groq 方法，作為備援)
 def chat(client, messages, use_search=True):
@@ -510,7 +510,7 @@ def chat(client, messages, use_search=True):
     prompts_data = load_prompts()
     executive_orders_parts = []
     if prompts_data.get('executive_orders'):
-        executive_orders_parts.append("\n\n📋 **參考政策：**")
+        executive_orders_parts.append("\n\n **參考政策：**")
         for order in prompts_data['executive_orders']:
             executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
     executive_orders_text = "\n".join(executive_orders_parts)
@@ -525,7 +525,7 @@ def chat(client, messages, use_search=True):
         if isinstance(doc, dict):
             policies = doc.get('policies') or doc.get('policy')
             if policies and isinstance(policies, dict):
-                policies_parts.append("\n\n📚 **政策摘要：**")
+                policies_parts.append("\n\n **政策摘要：**")
                 for key, p in policies.items():
                     title = p.get('title') or key
                     summary = p.get('summary', '')
@@ -538,7 +538,7 @@ def chat(client, messages, use_search=True):
                         policies_parts.append(f"  - 動作: {action_text}")
             admin = doc.get('administration')
             if admin and isinstance(admin, dict):
-                policies_parts.append("\n🏛️ **管理團隊：**")
+                policies_parts.append("\n **管理團隊：**")
                 president = admin.get('president')
                 term = admin.get('term')
                 if president:
@@ -599,18 +599,18 @@ Refer to the following policies and executive orders for your analysis:
         
         answer = response.choices[0].message.content
         if search_context:
-            answer += "\n\n🌐 *此回覆含網路搜尋資訊*"
+            answer += "\n\n *此回覆含網路搜尋資訊*"
         
         return answer
-        
+
     except Exception as e:
         error_msg = str(e)
         if "authentication" in error_msg.lower():
-            return "❌ API 驗證失敗，請聯絡管理員"
+            return " API 驗證失敗，請聯絡管理員"
         elif "rate limit" in error_msg.lower():
-            return "⏱️ 使用額度已達上限，請稍後再試"
+            return "⏱ 使用額度已達上限，請稍後再試"
         elif "connection" in error_msg.lower():
-            return "🌐 網路連線問題，請稍後再試"
+            return " 網路連線問題，請稍後再試"
         else:
             return f"❌ 發生錯誤：{error_msg}"
 
@@ -619,12 +619,12 @@ st.title("🤖 DEI 政策助手")
 
 # 顯示當前使用的模型
 if 'current_model' in st.session_state:
-    st.info(f"🔧 當前使用模型：**{st.session_state.current_model}**")
+    st.info(f"當前使用模型：**{st.session_state.current_model}**")
 
 # 初始化所有組件（在側邊欄之前）
 client = init_groq()
 if not client:
-    st.error("❌ 系統初始化失敗")
+    st.error("系統初始化失敗")
     st.stop()
 
 # 初始化 LangChain 組件
@@ -639,7 +639,7 @@ if LANGCHAIN_AVAILABLE and langchain_llm:
         if 'agent_mode' not in st.session_state:
             st.session_state.agent_mode = True
     except Exception as e:
-        st.warning(f"⚠️ Agent 初始化失敗，使用傳統模式: {str(e)}")
+        st.warning(f"Agent 初始化失敗，使用傳統模式: {str(e)}")
         st.session_state.agent_mode = False
 
 # 初始化 Supabase
@@ -654,20 +654,20 @@ with st.sidebar:
         has_secret = False
     
     if not has_secret and 'GROQ_API_KEY' not in os.environ:
-        st.error("⚠️ 系統未設定，請聯絡管理員")
+        st.error("系統未設定，請聯絡管理員，可點選右上角github連結提出issue")
         st.stop()
     
-    st.success("✅ 系統就緒")
+    st.success("系統就緒")
     
     # Supabase 設定
     st.divider()
     supabase_client = init_supabase()
     if supabase_client:
-        st.success("✅ Supabase 已連線")
+        st.success("Supabase 已連線")
         
         # Supabase 開關
         supabase_enabled = st.toggle(
-            "💾 儲存聊天記錄到 Supabase", 
+            "儲存聊天記錄到 Supabase", 
             value=st.session_state.supabase_enabled,
             help="開啟後會將聊天記錄儲存到 Supabase"
         )
@@ -686,23 +686,23 @@ with st.sidebar:
         
         # 顯示當前 Session ID
         if st.session_state.supabase_enabled:
-            with st.expander("📝 Session 資訊"):
+            with st.expander("Session 資訊"):
                 st.text(f"Session ID: {st.session_state.session_id[:8]}...")
-                if st.button("🔄 建立新 Session", use_container_width=True):
+                if st.button("建立新 Session", use_container_width=True):
                     st.session_state.session_id = str(uuid.uuid4())
                     st.session_state.messages = [{
                         "role": "assistant",
-                        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
+                        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 聊天和回答問題\n• 檢查內容是否符合 DEI 政策\n• 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
                     }]
                     st.session_state.file_processed = set()
                     st.rerun()
     else:
-        st.info("ℹ️ Supabase 未設定")
+        st.info("Supabase 未設定")
     
     # 檔案上傳
     st.divider()
     uploaded = st.file_uploader(
-        "📎 上傳檔案",
+        "上傳檔案",
         type=['pdf', 'docx', 'txt'],
         help="支援 PDF、Word、TXT 格式"
     )
@@ -711,13 +711,13 @@ with st.sidebar:
         # 使用檔案 ID 防止重複處理
         file_id = f"{uploaded.name}_{uploaded.size}"
         
-        if st.button("📤 分析檔案", use_container_width=True):
+        if st.button("分析檔案", use_container_width=True):
             if file_id not in st.session_state.file_processed:
                 st.session_state.file_processed.add(file_id)
                 
                 content = read_file(uploaded)
                 if content:
-                    user_message = f"📎 **{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:10000]}"
+                    user_message = f"**{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:10000]}"
                     if len(content) > 10000:
                         user_message += "\n\n*（檔案較長，已截取前 10000 字元）*"
 
@@ -726,33 +726,33 @@ with st.sidebar:
     
     # 設定
     st.divider()
-    search_enabled = st.toggle("🌐 網路搜尋", value=True, help="AI 會自動搜尋最新資訊")
+    search_enabled = st.toggle("網路搜尋", value=True, help="AI 會自動搜尋最新資訊")
     st.session_state['search'] = search_enabled
     
     # Agent 模式切換
     if LANGCHAIN_AVAILABLE and agent_graph:
         agent_enabled = st.toggle(
-            "🤖 智能搜尋模式 (LangGraph)", 
+            "智能搜尋模式 (LangGraph)", 
             value=st.session_state.get('agent_mode', True),
             help="使用 LangGraph + Tavily 進行智能搜尋決策"
         )
         st.session_state['agent_mode'] = agent_enabled
         
         if agent_enabled and tavily_search:
-            st.success("✨ Tavily 搜尋已啟用")
+            st.success("Tavily 搜尋已啟用")
         elif agent_enabled:
-            st.warning("⚠️ Tavily API 未設定，使用基礎模式")
+            st.warning("Tavily API 未設定，使用基礎模式")
     
     # 清除
     st.divider()
-    if st.button("🗑️ 清除對話", use_container_width=True):
+    if st.button("清除對話", use_container_width=True):
         # 如果啟用 Supabase，從資料庫刪除
         if st.session_state.supabase_enabled and supabase_client:
             delete_chat_history(supabase_client, st.session_state.session_id)
         
         st.session_state.messages = [{
             "role": "assistant",
-            "content": "對話已清除！😊 有什麼我可以幫你的嗎？"
+            "content": "對話已清除！有什麼我可以幫你的嗎？"
         }]
         st.session_state.file_processed = set()
         st.rerun()
@@ -789,7 +789,7 @@ if prompt := st.chat_input("輸入訊息..."):
         )
         
         if use_agent:
-            with st.spinner("🔍 智能搜尋中..."):
+            with st.spinner("智能搜尋中..."):
                 # 準備系統提示
                 user_language = detect_language(prompt)
                 language_instruction = get_language_instruction(user_language)
@@ -798,7 +798,7 @@ if prompt := st.chat_input("輸入訊息..."):
                 prompts_data = load_prompts()
                 executive_orders_parts = []
                 if prompts_data.get('executive_orders'):
-                    executive_orders_parts.append("\n\n📋 **參考政策：**")
+                    executive_orders_parts.append("\n\n**參考政策：**")
                     for order in prompts_data['executive_orders']:
                         executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
                 executive_orders_text = "\n".join(executive_orders_parts)
@@ -811,7 +811,7 @@ if prompt := st.chat_input("輸入訊息..."):
                     if isinstance(doc, dict):
                         policies = doc.get('policies') or doc.get('policy')
                         if policies and isinstance(policies, dict):
-                            policies_parts.append("\n\n📚 **政策摘要：**")
+                            policies_parts.append("\n\n**政策摘要：**")
                             for key, p in policies.items():
                                 title = p.get('title') or key
                                 summary = p.get('summary', '')
@@ -856,7 +856,7 @@ DO NOT use search for:
 ✗ Casual greetings or small talk
 ✗ Questions you can answer from training data
 ✗ Analyzing content the user has provided
-✗ Explaining policies from reference materials
+✗ Explaining policies from reference materials (its already provided)
 
 Be conservative with search usage to save API credits.
 
@@ -875,7 +875,7 @@ Be conservative with search usage to save API credits.
                     ))
                     # 檢查是否使用了搜尋
                     if "tavily" in str(response).lower() or any(keyword in prompt.lower() for keyword in ["最新", "latest", "2024", "2025"]):
-                        response += "\n\n🌐 *此回覆使用智能搜尋*"
+                        response += "\n\n*此回覆使用智能搜尋*"
                 except Exception as e:
                     st.error(f"Agent 執行錯誤: {str(e)}")
                     response = "抱歉，發生錯誤。請稍後再試。"
