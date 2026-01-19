@@ -56,7 +56,7 @@ st.set_page_config(
 if 'messages' not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant",
-        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊\n\n---\n\n👋 Hello! I'm the DEI Policy Assistant.\n\nI can help you:\n• 💬 Chat and answer questions\n• 📋 Check content for DEI policy compliance\n• 💡 Provide improvement suggestions\n\nHow can I help you today? 😊"
+        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 聊天和回答問題\n• 檢查內容是否符合 DEI 政策\n• 提供改善建議\n\n有什麼我可以幫忙的嗎？😊\n\n---\n\n👋 Hello! I'm the DEI Policy Assistant.\n\nI can help you:\n• Chat and answer questions\n• Check content for DEI policy compliance\n• Provide improvement suggestions\n\nHow can I help you today? 😊"
     }]
 
 if 'file_processed' not in st.session_state:
@@ -121,7 +121,7 @@ def init_langchain_groq():
     available_models = [m for m in models if m not in st.session_state.failed_models]
     
     if not available_models:
-        st.error("❌ 所有模型都已達到上限，請稍後再試或升級您的 Groq 方案")
+        st.error("所有模型都已達到上限，請稍後再試或升級您的 Groq 方案")
         return None
     
     # 使用第一個可用的模型
