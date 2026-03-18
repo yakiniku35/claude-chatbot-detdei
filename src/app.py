@@ -12,7 +12,7 @@ import uuid
 # LangChain imports
 try:
     from langchain_groq import ChatGroq
-    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
     from langgraph.graph import StateGraph, END, add_messages
     from langgraph.checkpoint.memory import MemorySaver
     from langchain_tavily import TavilySearch
@@ -224,6 +224,17 @@ def delete_chat_history(supabase, session_id: str):
         st.error(f"刪除聊天記錄失敗: {str(e)}")
         return False
 
+# 儲存訊息的輔助函數
+def add_and_save_message(role, content):
+    st.session_state.messages.append({"role": role, "content": content})
+    if st.session_state.supabase_enabled and supabase_client:
+        save_message_to_supabase(
+            supabase_client,
+            st.session_state.session_id,
+            role,
+            content
+        )
+
 # 讀取檔案
 def read_file(file):
     try:
@@ -420,11 +431,9 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
             elif msg["role"] == "assistant":
                 langchain_messages.append(AIMessage(content=msg["content"]))
         
-        # 添加系統提示作為第一條訊息
-        if langchain_messages:
-            langchain_messages[0] = HumanMessage(
-                content=f"{system_prompt}\n\nUser: {langchain_messages[0].content}"
-            )
+        # 將系統提示作為 SystemMessage 置於最前（避免破壞既有角色/順序）
+        if system_prompt:
+            langchain_messages.insert(0, SystemMessage(content=system_prompt))
         
         # 執行 agent
         result = await graph.ainvoke(
@@ -725,17 +734,6 @@ with st.sidebar:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-
-# 儲存訊息的輔助函數
-def add_and_save_message(role, content):
-    st.session_state.messages.append({"role": role, "content": content})
-    if st.session_state.supabase_enabled and supabase_client:
-        save_message_to_supabase(
-            supabase_client,
-            st.session_state.session_id,
-            role,
-            content
-        )
 
 # 文字輸入
 if prompt := st.chat_input("輸入訊息..."):
