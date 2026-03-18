@@ -1,6 +1,7 @@
 # DEI Policy Chatbot
 
-Streamlit-based chatbot for analyzing content against Diversity, Equity, and Inclusion (DEI) policies. Powered by Groq's LLaMA 3.3 70B with web search capabilities.
+Streamlit-based chatbot for analyzing content against Diversity, Equity, and Inclusion (DEI) policies. 
+Powered by Groq's LLaMA 3.3 70B with web search capabilities.
 
 ## Setup
 
