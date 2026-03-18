@@ -701,7 +701,7 @@ with st.sidebar:
                     st.session_state.session_id = str(uuid.uuid4())
                     st.session_state.messages = [{
                         "role": "assistant",
-                        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 聊天和回答問題\n• 檢查內容是否符合 DEI 政策\n• 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
+                        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n\n• 聊天和回答問題\n\n• 檢查內容是否符合 DEI 政策\n\n• 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
                     }]
                     st.session_state.file_processed = set()
                     st.rerun()
