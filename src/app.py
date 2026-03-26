@@ -818,8 +818,19 @@ if prompt := st.chat_input("輸入訊息..."):
                 policies_text = "\n".join(policies_parts)
                 
                 if requesting_analysis:
-                    system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
-When analyzing content, provide DEI relevance, score (0-5), and legal considerations.
+                    system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI).
+When analyzing content, provide: (1) DEI relevance, (2) score (0-5), and (3) legal considerations.
+
+OUTPUT RULES (to keep responses concise):
+- Write in the language requested by the user.
+- Total response: <= 180 words (or <= 8 sentences).
+- Use exactly these headings:
+  1) "DEI Relevance"
+  2) "Score (0-5)"
+  3) "Legal Considerations"
+- Under "Legal Considerations", use at most 3 short bullets (each <= 1 sentence).
+
+Avoid long quotations. Do not restate the reference policies verbatim.
 
 **SEARCH TOOL USAGE GUIDELINES**:
 You have access to tavily_search. Only use it when:
@@ -841,6 +852,12 @@ Reference policies:
 {executive_orders_text}{policies_text}"""
                 else:
                     system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
+
+OUTPUT RULES (to keep responses concise):
+- Write in the language requested by the user.
+- Total response: <= 140 words (or <= 6 sentences).
+- If you must add policy context, summarize it in 1 short paragraph. No long lists.
+- Avoid long quotations and do not restate the reference policies verbatim.
 
 **SEARCH TOOL USAGE GUIDELINES**:
 You have access to tavily_search. Only use it when:
