@@ -12,7 +12,7 @@ import uuid
 # LangChain imports
 try:
     from langchain_groq import ChatGroq
-    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+    from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
     from langgraph.graph import StateGraph, END, add_messages
     from langgraph.checkpoint.memory import MemorySaver
     from langchain_tavily import TavilySearch
@@ -45,6 +45,171 @@ def load_prompts():
     except FileNotFoundError:
         return {"executive_orders": []}
 
+
+DEFAULT_ASSISTANT_MESSAGE = """👋 你好！我是 DEI 政策助手。
+
+我可以幫你：
+• 💬 回答 DEI 政策與情境問題
+• 📋 判斷某段內容或情境是否可能違反 DEI 政策
+• ❓ 在資訊不足時先幫你釐清重點
+• 💡 提供改善建議與下一步
+
+你可以直接貼一段對話、政策、招募條件、公告或真實情境，我會幫你判斷是否有 DEI 風險。
+
+---
+
+👋 Hello! I'm the DEI Policy Assistant.
+
+I can help you:
+• 💬 Answer DEI policy and scenario questions
+• 📋 Assess whether content or a situation may conflict with DEI policy
+• ❓ Ask clarifying questions when key facts are missing
+• 💡 Suggest safer wording and practical next steps
+
+You can paste a message, policy, hiring requirement, announcement, or workplace scenario, and I will help assess the DEI risk."""
+
+
+def get_policy_reference_text(prompts_data):
+    """Build a readable policy reference block from prompts.json."""
+    parts = []
+
+    executive_orders = prompts_data.get('executive_orders') or []
+    if executive_orders:
+        parts.append("📋 Policy References:")
+        for order in executive_orders:
+            title = order.get('title', '')
+            description = order.get('description', '')
+            purpose = order.get('purpose', '')
+            actions = order.get('actions', [])
+
+            parts.append(f"- {title}: {description}")
+            if purpose:
+                parts.append(f"  Purpose: {purpose}")
+            if actions:
+                action_text = "; ".join(actions[:3])
+                if len(actions) > 3:
+                    action_text += "..."
+                parts.append(f"  Key actions: {action_text}")
+
+    document = prompts_data.get('document')
+    if isinstance(document, list) and document:
+        document = document[0]
+
+    if isinstance(document, dict):
+        policies = document.get('policies') or document.get('policy') or {}
+        if isinstance(policies, dict) and policies:
+            parts.append("\n📚 Policy Summary:")
+            for key, policy in policies.items():
+                title = policy.get('title') or key
+                summary = policy.get('summary', '')
+                parts.append(f"- {title}: {summary}")
+
+                actions = policy.get('actions', [])
+                if actions:
+                    action_text = "; ".join(actions[:3])
+                    if len(actions) > 3:
+                        action_text += "..."
+                    parts.append(f"  Expected actions: {action_text}")
+
+        administration = document.get('administration')
+        if isinstance(administration, dict):
+            president = administration.get('president')
+            term = administration.get('term')
+            focus = administration.get('policy_focus', [])
+
+            admin_bits = []
+            if president:
+                admin_bits.append(f"leader={president}")
+            if term:
+                admin_bits.append(f"term={term}")
+            if focus:
+                admin_bits.append(f"focus={', '.join(focus)}")
+
+            if admin_bits:
+                parts.append("\n🏛️ Administration Context:")
+                parts.append(f"- {'; '.join(admin_bits)}")
+
+    return "\n".join(parts).strip()
+
+
+def get_mode_specific_instruction(is_scenario_review):
+    if is_scenario_review:
+        return """# Current Response Mode
+The user's latest message most likely asks for a DEI scenario review.
+
+Use this structure:
+- Scenario Summary:
+- Initial Assessment: Likely DEI policy concern | Possible DEI concern | No clear DEI concern | Insufficient information
+- Confidence: High | Medium | Low
+- Relevant Policy Signals:
+- Explanation:
+- Recommended Next Step:
+- Clarifying Questions: only include this section when the missing facts materially change the assessment
+
+When the facts are incomplete, do not guess. Ask up to three concise clarifying questions before making a strong conclusion."""
+
+    return """# Current Response Mode
+The user's latest message appears to be general guidance or conversation.
+
+Answer naturally, but if the user includes a concrete scenario, policy text, hiring practice, workplace interaction, or asks whether something is acceptable, switch into the scenario review structure automatically."""
+
+
+def build_system_prompt(user_text, include_tool_guidance=False):
+    """Build a layered DEI system prompt inspired by sectioned prompt architecture."""
+    prompts_data = load_prompts()
+    policy_reference_text = get_policy_reference_text(prompts_data)
+    user_language = detect_language(user_text)
+    language_instruction = get_language_instruction(user_language)
+    scenario_review = is_analysis_request(user_text)
+
+    tool_guidance = ""
+    if include_tool_guidance:
+        tool_guidance = """
+# Tool Guidance
+You may use the tavily_search tool when the user asks for recent developments, statistics, case law, current events, or information that is likely to have changed over time.
+Do not search the web for every DEI scenario. Prefer reasoning from the provided policy references unless current information would materially improve the answer."""
+
+    return f"""You are a DEI policy assistant focused on helping the user determine whether a described situation, statement, hiring decision, workplace interaction, or document may conflict with DEI policy expectations.
+
+{language_instruction}
+
+# Identity
+- Be professional, calm, and direct.
+- Your primary job is to identify whether the user's scenario raises a DEI policy concern and explain why.
+- Help the user understand the practical policy risk, not just generate a generic DEI score.
+
+# Boundaries
+- Do not present yourself as HR, a formal investigator, or legal counsel.
+- Do not claim a definitive legal violation or official company finding.
+- Do not invent facts, motives, or protected characteristics that the user did not provide.
+- Do not ask for unnecessary personal identifiers or highly sensitive details.
+- If key facts are missing, say so clearly and ask concise clarifying questions.
+
+# Review Method
+For scenarios, policies, messages, job descriptions, documents, or workplace practices:
+1. Briefly summarize what happened or what was written.
+2. Decide whether the information suggests a likely DEI policy concern, a possible concern, no clear concern, or insufficient information.
+3. Explain which policy principles, patterns, or references are relevant.
+4. Separate what is explicitly stated from what is only an assumption.
+5. Offer a practical next step such as revising wording, gathering facts, or escalating to an appropriate human reviewer.
+
+# Escalation and Care
+- If the scenario suggests discrimination, harassment, exclusion, inaccessible accommodation handling, retaliation, or repeated stereotyping, say that it likely needs human review.
+- If the issue is ambiguous but high-risk, prefer careful wording such as "possible concern" rather than a hard conclusion.
+- If there is not enough information, ask for the facts that would change the outcome instead of pretending certainty.
+
+# Response Quality
+- Report your assessment faithfully. Do not overstate certainty.
+- Keep the explanation concise but specific.
+- When the answer is not a scenario review, do not force a violation label.
+
+{get_mode_specific_instruction(scenario_review)}
+{tool_guidance}
+
+# Policy References
+{policy_reference_text or 'No policy references are currently configured.'}
+"""
+
 # 設定頁面
 st.set_page_config(
     page_title="DEI 聊天機器人",
@@ -56,7 +221,7 @@ st.set_page_config(
 if 'messages' not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant",
-        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊\n\n---\n\n👋 Hello! I'm the DEI Policy Assistant.\n\nI can help you:\n• 💬 Chat and answer questions\n• 📋 Check content for DEI policy compliance\n• 💡 Provide improvement suggestions\n\nHow can I help you today? 😊"
+        "content": DEFAULT_ASSISTANT_MESSAGE
     }]
 
 if 'file_processed' not in st.session_state:
@@ -390,19 +555,37 @@ def is_analysis_request(text):
     判斷使用者訊息是否為 DEI 政策分析請求
     Returns: True if requesting analysis, False for casual conversation
     """
-    analysis_keywords = [
-        # 中文關鍵字
-        "檢查", "分析", "評估", "審查", "違反", "符合", "遵守", "等級",
-        "dei", "政策", "歧視", "刻板印象", "排他", "冒犯", "不當",
-        "請幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反", "討論",
-        # 英文關鍵字
-        "check", "analyze", "analyse", "review", "assess", "evaluate", 
-        "violate", "violation", "comply", "compliance", "policy", "discrimination",
-        "stereotype", "offensive", "inappropriate", "inclusive", "diversity"
-    ]
-    
     text_lower = text.lower()
-    return any(keyword in text_lower for keyword in analysis_keywords)
+
+    explicit_review_keywords = [
+        "檢查", "分析", "評估", "審查", "違反", "符合", "遵守", "算不算", "合不合理",
+        "幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反", "需不需要通報",
+        "check", "analyze", "analyse", "review", "assess", "evaluate", "violate",
+        "violation", "comply", "compliance", "policy", "should i report", "is this okay",
+        "is this allowed", "does this violate", "dei concern", "discrimination"
+    ]
+    scenario_signals = [
+        "主管", "同事", "面試", "招募", "招聘", "升遷", "薪資", "懷孕", "身障", "殘障",
+        "宗教", "性別", "年齡", "族裔", "國籍", "口音", "性傾向", "性別認同", "排除",
+        "歧視", "刻板印象", "冒犯", "騷擾", "報復", "不當", "公告", "職缺", "政策",
+        "manager", "coworker", "interview", "hiring", "promotion", "salary", "pregnant",
+        "disability", "religion", "gender", "age", "race", "ethnicity", "accent", "harassment",
+        "retaliation", "excluded", "job posting", "workplace", "accommodation"
+    ]
+    uploaded_or_structured_markers = [
+        "📎", "請檢查以下內容", "review the following", "please review the following"
+    ]
+
+    if any(keyword in text_lower for keyword in explicit_review_keywords):
+        return True
+
+    if any(marker.lower() in text_lower for marker in uploaded_or_structured_markers):
+        return True
+
+    scenario_hits = sum(1 for keyword in scenario_signals if keyword in text_lower)
+    question_like = any(token in text_lower for token in ["?", "？", "是否", "是不是", "能不能", "可不可以", "should", "can", "does"]) 
+
+    return scenario_hits >= 2 or (scenario_hits >= 1 and question_like)
 
 # AI 對話 (使用 LangGraph Agent)
 async def chat_with_agent(graph, messages, thread_id, system_prompt):
@@ -411,7 +594,7 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
         config = {"configurable": {"thread_id": thread_id}}
         
         # 轉換訊息格式
-        langchain_messages = []
+        langchain_messages = [SystemMessage(content=system_prompt)]
         for msg in messages:
             if msg["role"] == "system":
                 continue  # 系統訊息會在節點中處理
@@ -419,12 +602,6 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
                 langchain_messages.append(HumanMessage(content=msg["content"]))
             elif msg["role"] == "assistant":
                 langchain_messages.append(AIMessage(content=msg["content"]))
-        
-        # 添加系統提示作為第一條訊息
-        if langchain_messages:
-            langchain_messages[0] = HumanMessage(
-                content=f"{system_prompt}\n\nUser: {langchain_messages[0].content}"
-            )
         
         # 執行 agent
         result = await graph.ainvoke(
@@ -452,101 +629,22 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
 def chat(client, messages, use_search=True):
     search_context = ""
     last_msg = next((m for m in reversed(messages) if m["role"] == "user"), None)
+    user_text = last_msg["content"] if last_msg else ""
     
     # 檢測使用者語言
     user_language = 'zh-TW'  # 預設繁體中文
     if last_msg:
-        user_language = detect_language(last_msg["content"])
+        user_language = detect_language(user_text)
     language_instruction = get_language_instruction(user_language)
     
-    if use_search and last_msg and should_search(last_msg["content"]):
-        results = search_web(last_msg["content"][:100])
+    if use_search and last_msg and should_search(user_text):
+        results = search_web(user_text[:100])
         if results:
             search_context = "\n\n參考網路資訊：\n" + "\n".join([
                 f"• {r.get('title', '')}: {r.get('body', '')[:100]}..." 
                 for r in results[:2]
             ])
-    
-    # 判斷使用者是否要求進行分析
-    requesting_analysis = last_msg and is_analysis_request(last_msg["content"])
-    
-    # 從 prompts.json 讀取執行命令
-    prompts_data = load_prompts()
-    executive_orders_parts = []
-    if prompts_data.get('executive_orders'):
-        executive_orders_parts.append("\n\n📋 **參考政策：**")
-        for order in prompts_data['executive_orders']:
-            executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
-    executive_orders_text = "\n".join(executive_orders_parts)
-    
-    # 從 prompts.json 讀取 document.policies 與 administration（如果存在）並摘要化
-    policies_parts = []
-    doc = prompts_data.get('document')
-    # 支援 document 為物件或單元素陣列
-    if doc:
-        if isinstance(doc, list) and len(doc) > 0:
-            doc = doc[0]
-        if isinstance(doc, dict):
-            policies = doc.get('policies') or doc.get('policy')
-            if policies and isinstance(policies, dict):
-                policies_parts.append("\n\n📚 **政策摘要：**")
-                for key, p in policies.items():
-                    title = p.get('title') or key
-                    summary = p.get('summary', '')
-                    actions = p.get('actions', [])
-                    policies_parts.append(f"**{title}**: {summary}")
-                    if actions:
-                        action_text = "; ".join(actions[:3])
-                        if len(actions) > 3:
-                            action_text += "..."
-                        policies_parts.append(f"  - 動作: {action_text}")
-            admin = doc.get('administration')
-            if admin and isinstance(admin, dict):
-                policies_parts.append("\n🏛️ **管理團隊：**")
-                president = admin.get('president')
-                term = admin.get('term')
-                if president:
-                    policies_parts.append(f"- 主席/總統: {president}")
-                if term:
-                    policies_parts.append(f"- 任期: {term}")
-    policies_text = "\n".join(policies_parts)
-    
-    # 準備一般系統提示（適用於非深入法規分析的對話）
-    system_general = f"""
-    You are a DEI (Diversity, Equity, and Inclusion) policy assistant. Please respond in a professional, friendly, and neutral tone.
-    
-    {language_instruction}
-    
-    When users request policy background or reference materials, you may cite the following summaries:
-    {executive_orders_text}
-    {policies_text}
-    """
-
-    # 根據使用者意圖選擇不同的系統提示
-    if requesting_analysis:
-        # 分析模式：專業的 DEI 政策檢查
-        system = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
-For each policy, practice, or statement given, provide:
-
-1. Whether it is relevant to DEI or should be considered (Yes/No).
-2. A DEI impact score on a scale of 0-5 (0 = no impact, 5 = very strong impact).
-3. If applicable, explain potential implications according to relevant laws or regulations (e.g., Title VII of the Civil Rights Act, ADA, etc.).
-
-Format your output as:
-
-- DEI Relevance: Yes/No
-- DEI Score: [0-5]
-- Legal/Regulatory Consideration: [brief explanation, if applicable]
-
-Be concise but clear, and only include points directly related to DEI.
-
-{language_instruction}
-
-Refer to the following policies and executive orders for your analysis:
-{executive_orders_text}{policies_text}
-"""
-    else:
-        system = system_general
+    system = build_system_prompt(user_text, include_tool_guidance=False)
             
     try:
         msgs = [{"role": "system", "content": system}]
@@ -656,7 +754,7 @@ with st.sidebar:
                     st.session_state.session_id = str(uuid.uuid4())
                     st.session_state.messages = [{
                         "role": "assistant",
-                        "content": "👋 你好！我是 DEI 政策助手。\n\n我可以幫你：\n• 💬 聊天和回答問題\n• 📋 檢查內容是否符合 DEI 政策\n• 💡 提供改善建議\n\n有什麼我可以幫忙的嗎？😊"
+                        "content": DEFAULT_ASSISTANT_MESSAGE
                     }]
                     st.session_state.file_processed = set()
                     st.rerun()
@@ -716,7 +814,7 @@ with st.sidebar:
         
         st.session_state.messages = [{
             "role": "assistant",
-            "content": "對話已清除！😊 有什麼我可以幫你的嗎？"
+            "content": DEFAULT_ASSISTANT_MESSAGE
         }]
         st.session_state.file_processed = set()
         st.rerun()
@@ -754,52 +852,7 @@ if prompt := st.chat_input("輸入訊息..."):
         
         if use_agent:
             with st.spinner("🔍 智能搜尋中..."):
-                # 準備系統提示
-                user_language = detect_language(prompt)
-                language_instruction = get_language_instruction(user_language)
-                requesting_analysis = is_analysis_request(prompt)
-                
-                prompts_data = load_prompts()
-                executive_orders_parts = []
-                if prompts_data.get('executive_orders'):
-                    executive_orders_parts.append("\n\n📋 **參考政策：**")
-                    for order in prompts_data['executive_orders']:
-                        executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
-                executive_orders_text = "\n".join(executive_orders_parts)
-                
-                policies_parts = []
-                doc = prompts_data.get('document')
-                if doc:
-                    if isinstance(doc, list) and len(doc) > 0:
-                        doc = doc[0]
-                    if isinstance(doc, dict):
-                        policies = doc.get('policies') or doc.get('policy')
-                        if policies and isinstance(policies, dict):
-                            policies_parts.append("\n\n📚 **政策摘要：**")
-                            for key, p in policies.items():
-                                title = p.get('title') or key
-                                summary = p.get('summary', '')
-                                policies_parts.append(f"**{title}**: {summary}")
-                policies_text = "\n".join(policies_parts)
-                
-                if requesting_analysis:
-                    system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
-When analyzing content, provide DEI relevance, score (0-5), and legal considerations.
-
-**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
-
-{language_instruction}
-
-Reference policies:
-{executive_orders_text}{policies_text}"""
-                else:
-                    system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
-
-**TOOLS AVAILABLE**: You have access to a web search tool (tavily_search). Use your judgment to decide when searching would provide more accurate, current, or comprehensive information to answer the user's question.
-
-{language_instruction}
-
-{executive_orders_text}{policies_text}"""
+                system_prompt = build_system_prompt(prompt, include_tool_guidance=True)
                 
                 # 使用 async 執行
                 import asyncio
