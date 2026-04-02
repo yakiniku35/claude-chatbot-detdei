@@ -739,7 +739,6 @@ def chat(client, messages, use_search=True):
                 for r in results[:2]
             ])
     system = build_system_prompt(user_text, include_tool_guidance=False)
-    system = build_system_prompt(user_text, include_tool_guidance=False)
             
     try:
         msgs = [{"role": "system", "content": system}]
