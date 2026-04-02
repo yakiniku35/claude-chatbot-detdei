@@ -45,6 +45,26 @@
       "purpose": "Strengthen U.S. energy independence and boost economic growth."
     }
   ],
+  "document": {
+    "policies": {
+      "EO 14173 - Merit-Based Opportunity": {
+        "title": "End Illegal Discrimination and Restore Merit-Based Opportunity (EO 14173)",
+        "summary": "When analyzing content, treat this order as requiring the elimination of identity-based preferences and discriminatory practices in federal hiring, promotion, funding, contracts, and related guidance. Favor evaluations grounded in qualifications, merit, and lawful civil-rights compliance. Flag any program, policy, or recommendation that conditions opportunities or outcomes on protected identity traits."
+      },
+      "EO 14171 - Terminate DEI Programs": {
+        "title": "Terminate Radical and Wasteful Government DEI Programs (EO 14171)",
+        "summary": "Treat this order as requiring termination of DEI/DEIA programs, offices, training mandates, and performance requirements in the federal government and federal funding ecosystem when they are framed as DEI/DEIA principles. In analysis, prefer recommendations that redirect priorities toward performance, initiative, and merit-based management. Identify and report DEI-related offices, equity action plans, and similar requirements."
+      },
+      "EO 14170 - Biological Sex Policy": {
+        "title": "Defend Women from Gender Ideology Extremism and Restore Biological Truth (EO 14170)",
+        "summary": "Treat this order as requiring analysis to consider whether the content promotes or relies on gender ideology concepts inconsistent with biological sex definitions. In your response, highlight conflicts involving terminology or policies that blur or replace biological sex with self-identified gender. Focus on lawful sex-protective frameworks and the removal of statements/policies that inculcate gender ideology using government resources."
+      },
+      "EO 14154 - Unleashing American Energy": {
+        "title": "Unleash American Energy (EO 14154)",
+        "summary": "When content touches energy policy, treat this order as requiring regulatory and permitting decisions to align with clearly applicable law and to prioritize efficient permitting, accuracy in environmental analyses, and removal of burdensome restrictions that impede domestic energy development. Flag recommendations that conflict with these priorities or rely on unsupported, ideologically motivated methodologies."
+      }
+    }
+  },
   "administration": {
     "president": "Donald J. Trump",
     "term": "2025-2029",

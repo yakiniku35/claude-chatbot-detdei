@@ -1,42 +1,65 @@
 # DEI Policy Chatbot
-- [link](https://yakiniku35-claude-chatbot-detdei-srcapp-sesxar.streamlit.app/)
-- A Streamlit-based chatbot application for analyzing content against Diversity, Equity, and Inclusion (DEI) policies.
 
-## ✨ New: Intelligent Search with LangGraph
+Streamlit-based chatbot for analyzing content against Diversity, Equity, and Inclusion (DEI) policies.                    
+Powered by Groq's LLaMA 3.3 70B with web search capabilities.
 
-This chatbot now features an optional **AI-powered search agent** using LangGraph and Tavily API for smarter, more accurate responses. [Learn more →](docs/LANGGRAPH_INTEGRATION.md)
-
-## Quick Start
+## Setup
 
 ```bash
 pip install -r requirements.txt
-streamlit run src/app.py
 ```
 
-## Documentation
+### API Key Configuration
 
-- [Full README](docs/README.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [LangGraph Integration Guide](docs/LANGGRAPH_INTEGRATION.md) 🆕
-- [Security Policy](docs/security.md)
-- [Improvements Summary](docs/IMPROVEMENTS_SUMMARY.md)
+The bot requires a Groq API key. You can provide it in two ways:
 
-## Configuration
+**Option 1: Streamlit Secrets (Recommended for local development)**
+Create `.streamlit/secrets.toml`:
+```toml
+groq_api_key = "your_key_here"
+```
 
-- Application config: `config/prompts.json`
-- Dependencies: `requirements.txt`
-- Database schema: `supabase/migrations/schema.sql`
+**Option 2: Environment Variable (Recommended for deployment)**
+```bash
+export GROQ_API_KEY="your_key_here"
+streamlit run app.py
+```
 
-### API Keys
+**Security Note**: The API key is never exposed to end users. It's used server-side only to make API calls to Groq.
 
-Required:
-- `GROQ_API_KEY` - For AI chat functionality
+## Run
 
-Optional (for enhanced search):
-- `TAVILY_API_KEY` - For intelligent web search with LangGraph
+```bash
+streamlit run app.py
+```
 
-Configure in `.streamlit/secrets.toml` or as environment variables.
+## Features
 
-## License
+- **Intelligent Conversation**: Bot distinguishes between casual chat and analysis requests
+- **Policy Analysis**: Check text/files for DEI violations with 0-5 rating scale
+- **Web Search**: Auto-searches latest DEI info when needed
+- **File Support**: PDF, DOCX, TXT
+- **Custom Policies**: Add organization-specific rules via `prompts.json`
+- **Conversation History**: Full chat context maintained
+- **Supabase Integration**: Optional persistent chat history storage (see [SUPABASE_SETUP.md](SUPABASE_SETUP.md))
 
-See [LICENSE](docs/LICENSE)
+### Two Interaction Modes
+
+The bot automatically adapts its behavior:
+- **Casual Mode**: Friendly conversations, answers questions, no automatic DEI rating
+- **Analysis Mode**: Professional DEI policy checking when you use keywords like "檢查", "分析", "check", "analyze"
+
+## Architecture
+
+Single-file Streamlit app (`app.py`):
+- `init_groq()`: Client initialization with API key from secrets or environment
+- `is_analysis_request()`: Intent detection to distinguish conversation from analysis
+- `read_file()`: Extract text from uploaded documents
+- `search_web()`: DuckDuckGo integration for current information
+- `should_search()`: Keyword detection for search triggers
+- `chat()`: Main AI interaction with context-aware prompts
+- Main section: UI layout and conversation loop
+
+## Development
+
+DevContainer configured for GitHub Codespaces with Python 3.11+. Auto-installs dependencies and runs on port 8501.
