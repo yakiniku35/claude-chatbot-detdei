@@ -3,7 +3,6 @@ from groq import Groq
 import PyPDF2
 import docx
 import io
-import json
 import os
 from typing import TypedDict, Annotated, Literal
 from datetime import datetime
@@ -36,14 +35,17 @@ except Exception:
     Client = None
     SUPABASE_AVAILABLE = False
 
-# 讀取 prompts.json
+# 讀取 prompt.md
 @st.cache_data
-def load_prompts():
+def load_base_prompt():
     try:
-        with open('config/prompts.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+        with open('prompt.md', 'r', encoding='utf-8') as f:
+            return f.read().strip()
     except FileNotFoundError:
-        return {"executive_orders": []}
+        return (
+            "You are a compliance assistant. "
+            "Use the instructions in the application to review user scenarios carefully."
+        )
 
 # 設定頁面
 st.set_page_config(
@@ -432,25 +434,35 @@ def get_language_instruction(lang_code):
     }
     return language_map.get(lang_code, 'Please respond in the same language as the user.')
 
-# 判斷使用者是否要求進行 DEI 分析
-def is_analysis_request(text):
-    """
-    判斷使用者訊息是否為 DEI 政策分析請求
-    Returns: True if requesting analysis, False for casual conversation
-    """
-    analysis_keywords = [
-        # 中文關鍵字
-        "檢查", "分析", "評估", "審查", "違反", "符合", "遵守", "等級",
-        "dei", "政策", "歧視", "刻板印象", "排他", "冒犯", "不當",
-        "請幫我看", "幫我確認", "這樣可以嗎", "有問題嗎", "有沒有違反", "討論",
-        # 英文關鍵字
-        "check", "analyze", "analyse", "review", "assess", "evaluate", 
-        "violate", "violation", "comply", "compliance", "policy", "discrimination",
-        "stereotype", "offensive", "inappropriate", "inclusive", "diversity"
+# 組合系統提示：以 prompt.md 為主，再補充執行層指示
+def build_system_prompt(user_text="", tool_enabled=False):
+    user_language = detect_language(user_text) if user_text else 'zh-TW'
+    language_instruction = get_language_instruction(user_language)
+    base_prompt = load_base_prompt()
+
+    prompt_parts = [
+        base_prompt,
+        "",
+        language_instruction,
+        "",
+        "Additional runtime instructions:",
+        "- Follow the policy and response structure defined above as the primary instruction source.",
+        "- If the user provides a concrete scenario or document, apply the scenario compliance review format from the base prompt.",
+        "- If the user asks a general question or greets you without a concrete scenario, apply the general guidance mode from the base prompt.",
+        "- Be concise, do not quote long passages from the policy text, and do not restate the full prompt.",
     ]
-    
-    text_lower = text.lower()
-    return any(keyword in text_lower for keyword in analysis_keywords)
+
+    if tool_enabled:
+        prompt_parts.extend([
+            "",
+            "Search tool usage guidelines:",
+            "- You have access to tavily_search when enabled.",
+            "- Use search only when the user explicitly asks to search/find something, or asks for latest/current/recent/news/statistics information.",
+            "- Do not use search for analyzing text the user already provided, casual greetings, or stable policy wording already covered by the base prompt.",
+            "- Be conservative with search usage to save API credits.",
+        ])
+
+    return "\n".join(prompt_parts)
 
 # AI 對話 (使用 LangGraph Agent)
 async def chat_with_agent(graph, messages, thread_id, system_prompt):
@@ -498,12 +510,10 @@ async def chat_with_agent(graph, messages, thread_id, system_prompt):
 def chat(client, messages, use_search=True):
     search_context = ""
     last_msg = next((m for m in reversed(messages) if m["role"] == "user"), None)
-    
-    # 檢測使用者語言
-    user_language = 'zh-TW'  # 預設繁體中文
-    if last_msg:
-        user_language = detect_language(last_msg["content"])
-    language_instruction = get_language_instruction(user_language)
+    system = build_system_prompt(
+        last_msg["content"] if last_msg else "",
+        tool_enabled=False
+    )
     
     if use_search and last_msg and should_search(last_msg["content"]):
         results = search_web(last_msg["content"][:100])
@@ -512,87 +522,6 @@ def chat(client, messages, use_search=True):
                 f"• {r.get('title', '')}: {r.get('body', '')[:100]}..." 
                 for r in results[:2]
             ])
-    
-    # 判斷使用者是否要求進行分析
-    requesting_analysis = last_msg and is_analysis_request(last_msg["content"])
-    
-    # 從 prompts.json 讀取執行命令
-    prompts_data = load_prompts()
-    executive_orders_parts = []
-    if prompts_data.get('executive_orders'):
-        executive_orders_parts.append("\n\n **參考政策：**")
-        for order in prompts_data['executive_orders']:
-            executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
-    executive_orders_text = "\n".join(executive_orders_parts)
-    
-    # 從 prompts.json 讀取 document.policies 與 administration（如果存在）並摘要化
-    policies_parts = []
-    doc = prompts_data.get('document')
-    # 支援 document 為物件或單元素陣列
-    if doc:
-        if isinstance(doc, list) and len(doc) > 0:
-            doc = doc[0]
-        if isinstance(doc, dict):
-            policies = doc.get('policies') or doc.get('policy')
-            if policies and isinstance(policies, dict):
-                policies_parts.append("\n\n **政策摘要：**")
-                for key, p in policies.items():
-                    title = p.get('title') or key
-                    summary = p.get('summary', '')
-                    actions = p.get('actions', [])
-                    policies_parts.append(f"**{title}**: {summary}")
-                    if actions:
-                        action_text = "; ".join(actions[:3])
-                        if len(actions) > 3:
-                            action_text += "..."
-                        policies_parts.append(f"  - 動作: {action_text}")
-            admin = doc.get('administration')
-            if admin and isinstance(admin, dict):
-                policies_parts.append("\n **管理團隊：**")
-                president = admin.get('president')
-                term = admin.get('term')
-                if president:
-                    policies_parts.append(f"- 主席/總統: {president}")
-                if term:
-                    policies_parts.append(f"- 任期: {term}")
-    policies_text = "\n".join(policies_parts)
-    
-    # 準備一般系統提示（適用於非深入法規分析的對話）
-    system_general = f"""
-    You are a DEI (Diversity, Equity, and Inclusion) policy assistant. Please respond in a professional, friendly, and neutral tone.
-    
-    {language_instruction}
-    
-    When users request policy background or reference materials, you may cite the following summaries:
-    {executive_orders_text}
-    {policies_text}
-    """
-
-    # 根據使用者意圖選擇不同的系統提示
-    if requesting_analysis:
-        # 分析模式：專業的 DEI 政策檢查
-        system = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI). 
-For each policy, practice, or statement given, provide:
-
-1. Whether it is relevant to DEI or should be considered (Yes/No).
-2. A DEI impact score on a scale of 0-5 (0 = no impact, 5 = very strong impact).
-3. If applicable, explain potential implications according to relevant laws or regulations (e.g., Title VII of the Civil Rights Act, ADA, etc.).
-
-Format your output as:
-
-- DEI Relevance: Yes/No
-- DEI Score: [0-5]
-- Legal/Regulatory Consideration: [brief explanation, if applicable]
-
-Be concise but clear, and only include points directly related to DEI.
-
-{language_instruction}
-
-Refer to the following policies and executive orders for your analysis:
-{executive_orders_text}{policies_text}
-"""
-    else:
-        system = system_general
             
     try:
         msgs = [{"role": "system", "content": system}]
@@ -789,96 +718,7 @@ if prompt := st.chat_input("輸入訊息..."):
         
         if use_agent:
             with st.spinner("智能搜尋中..."):
-                # 準備系統提示
-                user_language = detect_language(prompt)
-                language_instruction = get_language_instruction(user_language)
-                requesting_analysis = is_analysis_request(prompt)
-                
-                prompts_data = load_prompts()
-                executive_orders_parts = []
-                if prompts_data.get('executive_orders'):
-                    executive_orders_parts.append("\n\n**參考政策：**")
-                    for order in prompts_data['executive_orders']:
-                        executive_orders_parts.append(f"• **{order.get('title', '')}**: {order.get('description', '')}")
-                executive_orders_text = "\n".join(executive_orders_parts)
-                
-                policies_parts = []
-                doc = prompts_data.get('document')
-                if doc:
-                    if isinstance(doc, list) and len(doc) > 0:
-                        doc = doc[0]
-                    if isinstance(doc, dict):
-                        policies = doc.get('policies') or doc.get('policy')
-                        if policies and isinstance(policies, dict):
-                            policies_parts.append("\n\n**政策摘要：**")
-                            for key, p in policies.items():
-                                title = p.get('title') or key
-                                summary = p.get('summary', '')
-                                policies_parts.append(f"**{title}**: {summary}")
-                policies_text = "\n".join(policies_parts)
-                
-                if requesting_analysis:
-                    system_prompt = f"""You are an analyst specialized in Diversity, Equity, and Inclusion (DEI).
-When analyzing content, provide: (1) DEI relevance, (2) score (0-5), and (3) legal considerations.
-
-OUTPUT RULES (to keep responses concise):
-- Write in the language requested by the user.
-- Total response: <= 180 words (or <= 8 sentences).
-- Use exactly these headings:
-  1) "DEI Relevance"
-  2) "Score (0-5)"
-  3) "Legal Considerations"
-- Under "Legal Considerations", use at most 3 short bullets (each <= 1 sentence).
-
-Avoid long quotations. Do not restate the reference policies verbatim.
-
-**SEARCH TOOL USAGE GUIDELINES**:
-You have access to tavily_search. Only use it when:
-✓ User explicitly asks to "search" or "find" something
-✓ User asks about "latest", "recent", "current" information
-✓ User asks about specific statistics, data, or research from 2024-2025
-✓ User wants real-world examples, cases, or news
-
-DO NOT use search for:
-✗ General DEI concepts and definitions
-✗ Analyzing uploaded documents or provided content
-✗ Casual conversation
-✗ Questions you can answer from your training data
-✗ Policy explanations already in the reference materials
-
-{language_instruction}
-
-Reference policies:
-{executive_orders_text}{policies_text}"""
-                else:
-                    system_prompt = f"""You are a DEI policy assistant. Be professional, friendly, and neutral.
-
-OUTPUT RULES (to keep responses concise):
-- Write in the language requested by the user.
-- Total response: <= 140 words (or <= 6 sentences).
-- If you must add policy context, summarize it in 1 short paragraph. No long lists.
-- Avoid long quotations and do not restate the reference policies verbatim.
-
-**SEARCH TOOL USAGE GUIDELINES**:
-You have access to tavily_search. Only use it when:
-✓ User explicitly asks to "search", "find", or "查詢"
-✓ User asks about "latest", "recent", "最新", "近期" information
-✓ User asks about specific current events, news, or statistics from 2024-2025
-✓ User wants real-world examples or recent cases
-✓ Information is likely to have changed recently
-
-DO NOT use search for:
-✗ General questions about DEI concepts
-✗ Casual greetings or small talk
-✗ Questions you can answer from training data
-✗ Analyzing content the user has provided
-✗ Explaining policies from reference materials (its already provided)
-
-Be conservative with search usage to save API credits.
-
-{language_instruction}
-
-{executive_orders_text}{policies_text}"""
+                system_prompt = build_system_prompt(prompt, tool_enabled=True)
                 
                 # 使用 async 執行
                 import asyncio
