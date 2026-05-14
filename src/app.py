@@ -39,7 +39,7 @@ except Exception:
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 PROMPT_FILE = PROJECT_ROOT / "prompt.md"
-ENABLE_TAVILY = False
+ENABLE_TAVILY = False # 預設關閉 Tavily，因為部分模型不支援工具呼叫，開啟前請確認 API 金鑰和模型支援
 TOOL_CALLING_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
