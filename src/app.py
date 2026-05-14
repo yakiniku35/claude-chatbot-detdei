@@ -161,7 +161,8 @@ def init_langchain_groq():
     
     # 模型列表：按優先順序排列，如果達到上限會自動切換
     models = [
-        "openai/gpt-oss-120b",
+        "groq/compound",
+        "groq/compound-mini",
         "llama-3.3-70b-versatile",      # 最強大的模型
         "llama-3.1-70b-versatile",      # 備用大模型
         "llama-3.2-90b-text-preview",   # 預覽大模型
