@@ -39,7 +39,12 @@ except Exception:
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 PROMPT_FILE = PROJECT_ROOT / "prompt.md"
-ENABLE_TAVILY = False # 預設關閉 Tavily，因為部分模型不支援工具呼叫，開啟前請確認 API 金鑰和模型支援
+ENABLE_SIDEBAR = False
+ENABLE_SUPABASE = False
+ENABLE_FILE_UPLOAD = False
+ENABLE_WEB_SEARCH = False
+ENABLE_AGENT_MODE = False
+ENABLE_TAVILY = False
 TOOL_CALLING_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
@@ -66,9 +71,9 @@ def get_base_prompt():
     return load_base_prompt(prompt_mtime)
 
 
-DEFAULT_ASSISTANT_MESSAGE = """👋 你好！我是合規風險助手。
+DEFAULT_ASSISTANT_MESSAGE = """👋 你好！我是DEI 評估助手。
 
-我會依照目前設定的政策 prompt，協助你檢查情境、文件、公告、政策或溝通內容中的合規風險。
+我會依照目前設定的政策 prompt，協助你檢查情境、文件、公告、政策或溝通內容中的DEI風險。
 
 你可以直接貼上具體情境、文件內容或問題，我會依內容自動用適合的審查格式回覆。
 
@@ -115,7 +120,7 @@ def build_system_prompt(user_text="", include_tool_guidance=False):
 
 # 設定頁面
 st.set_page_config(
-    page_title="合規風險助手",
+    page_title="DEI 評估助手",
     page_icon="🤖",
     layout="centered"
 )
@@ -134,7 +139,13 @@ if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
 if 'supabase_enabled' not in st.session_state:
-    st.session_state.supabase_enabled = False
+    st.session_state.supabase_enabled = ENABLE_SUPABASE
+
+if 'search' not in st.session_state:
+    st.session_state.search = ENABLE_WEB_SEARCH
+
+if 'agent_mode' not in st.session_state:
+    st.session_state.agent_mode = ENABLE_AGENT_MODE and ENABLE_TAVILY
 
 # 初始化 Groq
 def init_groq():
@@ -155,7 +166,7 @@ def init_groq():
 
 # 初始化 LangChain Groq (with fallback models)
 def init_langchain_groq():
-    if not LANGCHAIN_AVAILABLE:
+    if not LANGCHAIN_AVAILABLE or not ENABLE_AGENT_MODE:
         return None
     api_key = None
     try:
@@ -220,7 +231,7 @@ def switch_to_next_model():
 
 # 初始化 Tavily
 def init_tavily():
-    if not LANGCHAIN_AVAILABLE:
+    if not LANGCHAIN_AVAILABLE or not ENABLE_AGENT_MODE:
         return None
     if not ENABLE_TAVILY:
         return None
@@ -243,7 +254,7 @@ def init_tavily():
 # 初始化 Supabase
 @st.cache_resource
 def init_supabase():
-    if not SUPABASE_AVAILABLE:
+    if not SUPABASE_AVAILABLE or not ENABLE_SUPABASE:
         return None
     try:
         has_supabase_secrets = False
@@ -590,7 +601,7 @@ def chat(client, messages, use_search=True):
             return f"❌ 發生錯誤：{error_msg}"
 
 # 主介面
-st.title("合規風險助手")
+st.title("DEI 評估助手")
 
 # 初始化所有組件（在側邊欄之前）
 client = init_groq()
@@ -604,11 +615,9 @@ tavily_search = init_tavily()
 
 # 嘗試建立 agent graph
 agent_graph = None
-if LANGCHAIN_AVAILABLE and langchain_llm:
+if ENABLE_AGENT_MODE and LANGCHAIN_AVAILABLE and langchain_llm:
     try:
         agent_graph = create_agent_graph(langchain_llm, tavily_search)
-        if 'agent_mode' not in st.session_state:
-            st.session_state.agent_mode = True
     except Exception as e:
         st.warning(f"Agent 初始化失敗，使用傳統模式: {str(e)}")
         st.session_state.agent_mode = False
@@ -616,117 +625,114 @@ if LANGCHAIN_AVAILABLE and langchain_llm:
 # 初始化 Supabase
 supabase_client = init_supabase()
 
-# 側邊欄
-with st.sidebar:
-    # API 狀態
-    try:
-        has_secret = 'groq_api_key' in st.secrets
-    except:
-        has_secret = False
-    
-    if not has_secret and 'GROQ_API_KEY' not in os.environ:
-        st.error("系統未設定，請聯絡管理員，可點選右上角github連結提出issue")
-        st.stop()
-    
-    st.success("系統就緒")
-    
-    # Supabase 設定
-    st.divider()
-    supabase_client = init_supabase()
-    if supabase_client:
-        st.success("Supabase 已連線")
-        
-        # Supabase 開關
-        supabase_enabled = st.toggle(
-            "儲存聊天記錄到 Supabase", 
-            value=st.session_state.supabase_enabled,
-            help="開啟後會將聊天記錄儲存到 Supabase"
-        )
-        
-        # 如果開關狀態改變
-        if supabase_enabled != st.session_state.supabase_enabled:
-            st.session_state.supabase_enabled = supabase_enabled
-            
-            # 如果是開啟，嘗試載入歷史記錄
-            if supabase_enabled:
-                loaded_history = load_chat_history(supabase_client, st.session_state.session_id)
-                if loaded_history:
-                    st.session_state.messages = loaded_history
-                    st.success(f"已載入 {len(loaded_history)} 則訊息")
-                    st.rerun()
-        
-        # 顯示當前 Session ID
-        if st.session_state.supabase_enabled:
-            with st.expander("Session 資訊"):
-                st.text(f"Session ID: {st.session_state.session_id[:8]}...")
-                if st.button("建立新 Session", use_container_width=True):
-                    st.session_state.session_id = str(uuid.uuid4())
-                    st.session_state.messages = [{
-                        "role": "assistant",
-                        "content": DEFAULT_ASSISTANT_MESSAGE
-                    }]
-                    st.session_state.file_processed = set()
-                    st.rerun()
-    else:
-        st.info("Supabase 未設定")
-    
-    # 檔案上傳
-    st.divider()
-    uploaded = st.file_uploader(
-        "上傳檔案",
-        type=['pdf', 'docx', 'txt'],
-        help="支援 PDF、Word、TXT 格式"
-    )
-    
-    if uploaded:
-        # 使用檔案 ID 防止重複處理
-        file_id = f"{uploaded.name}_{uploaded.size}"
-        
-        if st.button("分析檔案", use_container_width=True):
-            if file_id not in st.session_state.file_processed:
-                st.session_state.file_processed.add(file_id)
-                
-                content = read_file(uploaded)
-                if content:
-                    user_message = f"**{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:10000]}"
-                    if len(content) > 10000:
-                        user_message += "\n\n*（檔案較長，已截取前 10000 字元）*"
+try:
+    has_secret = 'groq_api_key' in st.secrets
+except:
+    has_secret = False
 
-                    add_and_save_message("user", user_message)
-                    st.rerun()
-    
-    # 設定
-    st.divider()
-    search_enabled = st.toggle("網路搜尋", value=True, help="AI 會自動搜尋最新資訊")
-    st.session_state['search'] = search_enabled
-    
-    # Agent 模式切換
-    if LANGCHAIN_AVAILABLE and agent_graph and ENABLE_TAVILY:
-        agent_enabled = st.toggle(
-            "智能搜尋模式 (LangGraph)", 
-            value=st.session_state.get('agent_mode', True),
-            help="使用 LangGraph + Tavily 進行智能搜尋決策"
-        )
-        st.session_state['agent_mode'] = agent_enabled
-        
-        if agent_enabled and tavily_search:
-            st.success("Tavily 搜尋已啟用")
-        elif agent_enabled:
-            st.warning("Tavily API 未設定，使用基礎模式")
-    
-    # 清除
-    st.divider()
-    if st.button("清除對話", use_container_width=True):
-        # 如果啟用 Supabase，從資料庫刪除
-        if st.session_state.supabase_enabled and supabase_client:
-            delete_chat_history(supabase_client, st.session_state.session_id)
-        
-        st.session_state.messages = [{
-            "role": "assistant",
-            "content": DEFAULT_ASSISTANT_MESSAGE
-        }]
-        st.session_state.file_processed = set()
-        st.rerun()
+if not has_secret and 'GROQ_API_KEY' not in os.environ:
+    st.error("系統未設定，請聯絡管理員，可點選右上角github連結提出issue")
+    st.stop()
+
+st.session_state.supabase_enabled = ENABLE_SUPABASE
+st.session_state.search = ENABLE_WEB_SEARCH
+st.session_state.agent_mode = ENABLE_AGENT_MODE and ENABLE_TAVILY
+
+if ENABLE_SIDEBAR:
+    with st.sidebar:
+        st.success("系統就緒")
+
+        if ENABLE_SUPABASE:
+            st.divider()
+            supabase_client = init_supabase()
+            if supabase_client:
+                st.success("Supabase 已連線")
+
+                supabase_enabled = st.toggle(
+                    "儲存聊天記錄到 Supabase",
+                    value=st.session_state.supabase_enabled,
+                    help="開啟後會將聊天記錄儲存到 Supabase"
+                )
+
+                if supabase_enabled != st.session_state.supabase_enabled:
+                    st.session_state.supabase_enabled = supabase_enabled
+
+                    if supabase_enabled:
+                        loaded_history = load_chat_history(supabase_client, st.session_state.session_id)
+                        if loaded_history:
+                            st.session_state.messages = loaded_history
+                            st.success(f"已載入 {len(loaded_history)} 則訊息")
+                            st.rerun()
+
+                if st.session_state.supabase_enabled:
+                    with st.expander("Session 資訊"):
+                        st.text(f"Session ID: {st.session_state.session_id[:8]}...")
+                        if st.button("建立新 Session", use_container_width=True):
+                            st.session_state.session_id = str(uuid.uuid4())
+                            st.session_state.messages = [{
+                                "role": "assistant",
+                                "content": DEFAULT_ASSISTANT_MESSAGE
+                            }]
+                            st.session_state.file_processed = set()
+                            st.rerun()
+            else:
+                st.info("Supabase 未設定")
+
+        if ENABLE_FILE_UPLOAD:
+            st.divider()
+            uploaded = st.file_uploader(
+                "上傳檔案",
+                type=['pdf', 'docx', 'txt'],
+                help="支援 PDF、Word、TXT 格式"
+            )
+
+            if uploaded:
+                file_id = f"{uploaded.name}_{uploaded.size}"
+
+                if st.button("分析檔案", use_container_width=True):
+                    if file_id not in st.session_state.file_processed:
+                        st.session_state.file_processed.add(file_id)
+
+                        content = read_file(uploaded)
+                        if content:
+                            user_message = f"**{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:10000]}"
+                            if len(content) > 10000:
+                                user_message += "\n\n*（檔案較長，已截取前 10000 字元）*"
+
+                            add_and_save_message("user", user_message)
+                            st.rerun()
+
+        if ENABLE_WEB_SEARCH or ENABLE_AGENT_MODE:
+            st.divider()
+
+        if ENABLE_WEB_SEARCH:
+            search_enabled = st.toggle("網路搜尋", value=st.session_state.search, help="AI 會自動搜尋最新資訊")
+            st.session_state.search = search_enabled
+
+        if ENABLE_AGENT_MODE and LANGCHAIN_AVAILABLE and agent_graph and ENABLE_TAVILY:
+            agent_enabled = st.toggle(
+                "智能搜尋模式 (LangGraph)",
+                value=st.session_state.get('agent_mode', False),
+                help="使用 LangGraph + Tavily 進行智能搜尋決策"
+            )
+            st.session_state.agent_mode = agent_enabled
+
+            if agent_enabled and tavily_search:
+                st.success("Tavily 搜尋已啟用")
+            elif agent_enabled:
+                st.warning("Tavily API 未設定，使用基礎模式")
+
+        st.divider()
+        if st.button("清除對話", use_container_width=True):
+            if st.session_state.supabase_enabled and supabase_client:
+                delete_chat_history(supabase_client, st.session_state.session_id)
+
+            st.session_state.messages = [{
+                "role": "assistant",
+                "content": DEFAULT_ASSISTANT_MESSAGE
+            }]
+            st.session_state.file_processed = set()
+            st.rerun()
 
 # 顯示對話歷史
 for msg in st.session_state.messages:
