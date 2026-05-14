@@ -39,6 +39,7 @@ except Exception:
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 PROMPT_FILE = PROJECT_ROOT / "prompt.md"
+ENABLE_TAVILY = False
 TOOL_CALLING_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
@@ -220,6 +221,8 @@ def switch_to_next_model():
 # 初始化 Tavily
 def init_tavily():
     if not LANGCHAIN_AVAILABLE:
+        return None
+    if not ENABLE_TAVILY:
         return None
     api_key = None
     try:
@@ -698,7 +701,7 @@ with st.sidebar:
     st.session_state['search'] = search_enabled
     
     # Agent 模式切換
-    if LANGCHAIN_AVAILABLE and agent_graph:
+    if LANGCHAIN_AVAILABLE and agent_graph and ENABLE_TAVILY:
         agent_enabled = st.toggle(
             "智能搜尋模式 (LangGraph)", 
             value=st.session_state.get('agent_mode', True),
