@@ -88,6 +88,8 @@ def build_system_prompt(user_text="", include_tool_guidance=False):
         "- If the user asks a general question or greets you without a concrete scenario, use the general guidance mode from the base prompt.",
         "- Keep the answer concise and do not restate the full policy prompt.",
         "- Do not provide legal advice.",
+        "- Keep any internal scoring hidden unless the user explicitly asks to see numeric scores.",
+        "- All section headings must be in the user's language, not English.",
     ]
 
     if include_tool_guidance:
@@ -180,7 +182,7 @@ def init_langchain_groq():
     available_models = [m for m in models if m not in st.session_state.failed_models]
     
     if not available_models:
-        st.error("所有模型都已達到上限，請稍後再試或升級您的 Groq 方案")
+        st.error("所有模型都已達到上限，請稍待片刻再試，或聯絡管理員")
         return None
     
     # 使用第一個可用的模型
