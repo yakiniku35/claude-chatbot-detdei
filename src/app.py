@@ -578,10 +578,6 @@ def chat(client, messages, use_search=True):
 # 主介面
 st.title("合規風險助手")
 
-# 顯示當前使用的模型
-if 'current_model' in st.session_state:
-    st.info(f"當前使用模型：**{st.session_state.current_model}**")
-
 # 初始化所有組件（在側邊欄之前）
 client = init_groq()
 if not client:
