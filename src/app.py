@@ -39,6 +39,14 @@ except Exception:
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 PROMPT_FILE = PROJECT_ROOT / "prompt.md"
+TOOL_CALLING_MODELS = {
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it",
+    "llama3-70b-8192",
+}
 
 
 @st.cache_data
@@ -161,7 +169,7 @@ def init_langchain_groq():
     if not api_key:
         return None
     
-    # 模型列表：按優先順序排列，如果達到上限會自動切換
+    # Agent 模式需要 tool calling，這裡只挑選支援工具的模型
     models = [
         "groq/compound",
         "groq/compound-mini",
@@ -188,6 +196,7 @@ def init_langchain_groq():
     # 使用第一個可用的模型
     selected_model = available_models[0]
     st.session_state.current_model = selected_model
+    st.session_state.current_model_supports_tools = selected_model in TOOL_CALLING_MODELS
     
     return ChatGroq(
         model=selected_model,
@@ -333,7 +342,9 @@ class AgentState(TypedDict):
 # Agent 節點：模型決策
 async def agent_model(state: AgentState, llm, tools):
     """LLM 決定是否需要使用工具"""
-    llm_with_tools = llm.bind_tools(tools=tools) if tools else llm
+    llm_with_tools = llm
+    if tools:
+        llm_with_tools = llm.bind_tools(tools=tools)
     result = await llm_with_tools.ainvoke(state["messages"])
     return {"messages": [result]}
 
@@ -751,8 +762,18 @@ if prompt := st.chat_input("輸入訊息..."):
                     if "tavily" in str(response).lower() or any(keyword in prompt.lower() for keyword in ["最新", "latest", "2024", "2025"]):
                         response += "\n\n*此回覆使用智能搜尋*"
                 except Exception as e:
-                    st.error(f"Agent 執行錯誤: {str(e)}")
-                    response = "抱歉，發生錯誤。請稍後再試。"
+                    error_text = str(e)
+                    if "tool calling is not supported with this model" in error_text.lower():
+                        st.session_state['agent_mode'] = False
+                        st.warning("目前模型不支援智能搜尋，已自動改用一般回答模式。")
+                        response = chat(
+                            client,
+                            st.session_state.messages,
+                            st.session_state.get('search', True)
+                        )
+                    else:
+                        st.error(f"Agent 執行錯誤: {error_text}")
+                        response = "抱歉，發生錯誤。請稍後再試。"
         else:
             with st.spinner("思考中..."):
                 response = chat(
