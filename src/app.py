@@ -73,15 +73,15 @@ def get_base_prompt():
 
 DEFAULT_ASSISTANT_MESSAGE = """👋 你好！我是DEI 評估助手。
 
-我會依照目前設定的政策 prompt，協助你檢查情境、文件、公告、政策或溝通內容中的DEI風險。
+我會依照目前設定的政策指令，協助你檢查情境、文件、公告、政策或溝通內容中的DEI風險。
 
 你可以直接貼上具體情境、文件內容或問題，我會依內容自動用適合的審查格式回覆。
 
 ---
 
-👋 Hello! I'm the Compliance Risk Assistant.
+👋 Hello! I'm the DEI Evaluation Assistant.
 
-I use the current policy prompt to review scenarios, documents, announcements, policies, and communications for compliance risk.
+I use the current policy prompt to review scenarios, documents, announcements, policies, and communications for DEI risk.
 
 You can paste a concrete scenario, document excerpt, or question, and I will respond using the appropriate review format."""
 
