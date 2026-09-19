@@ -1,65 +1,77 @@
 # DEI Policy Chatbot
 
-Streamlit-based chatbot for analyzing content against Diversity, Equity, and Inclusion (DEI) policies.                    
-Powered by Groq's LLaMA 3.3 70B with web search capabilities.
+Streamlit 聊天機器人，依據 `prompt.md` 的政策指令，協助檢查情境、公告、政策與溝通內容中的 DEI 合規風險。
+目前使用 Groq API（免費層）作為模型供應商。
 
-## Setup
+## 安裝
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### API Key Configuration
+### API 金鑰設定
 
-The bot requires a Groq API key. You can provide it in two ways:
+**方式一：Streamlit Secrets（本機開發建議）**
 
-**Option 1: Streamlit Secrets (Recommended for local development)**
-Create `.streamlit/secrets.toml`:
+建立 `.streamlit/secrets.toml`（可複製 `.streamlit/secrets.toml.example`）：
+
 ```toml
 groq_api_key = "your_key_here"
 ```
 
-**Option 2: Environment Variable (Recommended for deployment)**
+**方式二：環境變數（部署建議）**
+
 ```bash
 export GROQ_API_KEY="your_key_here"
-streamlit run app.py
 ```
 
-**Security Note**: The API key is never exposed to end users. It's used server-side only to make API calls to Groq.
+金鑰只在伺服器端使用，不會傳到前端。
 
-## Run
+## 執行
 
 ```bash
-streamlit run app.py
+streamlit run src/app.py
 ```
 
-## Features
+## 功能
 
-- **Intelligent Conversation**: Bot distinguishes between casual chat and analysis requests
-- **Policy Analysis**: Check text/files for DEI violations with 0-5 rating scale
-- **Web Search**: Auto-searches latest DEI info when needed
-- **File Support**: PDF, DOCX, TXT
-- **Custom Policies**: Add organization-specific rules via `prompts.json`
-- **Conversation History**: Full chat context maintained
-- **Supabase Integration**: Optional persistent chat history storage (see [SUPABASE_SETUP.md](SUPABASE_SETUP.md))
+- **合規審查**：依 `prompt.md` 的格式輸出違反條款、政策來源、明確禁止事項、風險評估與建議行動
+- **自動語言偵測**：使用者用什麼語言提問就用什麼語言回覆（中文一律繁體）
+- **串流回覆**：逐字顯示，不必等整段生成完
+- **模型自動降級**：主力模型額度用完時自動改用備援模型
+- **範例問題**：首次進入時提供三個起手式
 
-### Two Interaction Modes
+以下功能已實作但預設關閉，改 `src/app.py` 頂端的開關即可啟用：
+`ENABLE_SIDEBAR`、`ENABLE_FILE_UPLOAD`（PDF/DOCX/TXT）、`ENABLE_WEB_SEARCH`、
+`ENABLE_SUPABASE`（對話保存）、`ENABLE_AGENT_MODE` + `ENABLE_TAVILY`（LangGraph 智能搜尋）。
 
-The bot automatically adapts its behavior:
-- **Casual Mode**: Friendly conversations, answers questions, no automatic DEI rating
-- **Analysis Mode**: Professional DEI policy checking when you use keywords like "檢查", "分析", "check", "analyze"
+## 架構
 
-## Architecture
+單檔 Streamlit App（`src/app.py`），分成五個區塊：
 
-Single-file Streamlit app (`app.py`):
-- `init_groq()`: Client initialization with API key from secrets or environment
-- `is_analysis_request()`: Intent detection to distinguish conversation from analysis
-- `read_file()`: Extract text from uploaded documents
-- `search_web()`: DuckDuckGo integration for current information
-- `should_search()`: Keyword detection for search triggers
-- `chat()`: Main AI interaction with context-aware prompts
-- Main section: UI layout and conversation loop
+| 區塊 | 內容 |
+|---|---|
+| 1. 設定常數 | 功能開關、`MODEL_CHAIN` 降級清單、token 與重試等成本控制參數 |
+| 2. 提示詞組裝 | `get_base_prompt()` 讀取 `prompt.md`、`detect_language()`、`build_system_prompt()` |
+| 3. API 呼叫層 | `init_groq()`、`build_api_messages()` 裁切歷史、`request_stream()` 降級與重試、`classify_error()` |
+| 4. 選用功能 | `read_file()`、`search_web()`、Supabase、LangGraph Agent |
+| 5. 介面 | 自訂 CSS、標題列、對話歷史、範例問題、`st.chat_input` |
 
-## Development
+主要成本控制參數（都在檔案頂端）：
 
-DevContainer configured for GitHub Codespaces with Python 3.11+. Auto-installs dependencies and runs on port 8501.
+```python
+MAX_HISTORY_MESSAGES = 10    # 最多送出最近 10 則對話
+MAX_HISTORY_CHARS = 12000    # 歷史訊息總字元上限
+MAX_TOKENS = 1600            # 單次回覆上限，最直接的省錢開關
+```
+
+## 文件
+
+- [`docs/api-strategy.md`](docs/api-strategy.md) — **免費 API 之後的升級路線、成本試算與方案比較**
+- [`prompt.md`](prompt.md) — 政策審查的系統提示詞
+- [`security.md`](security.md) — 安全性說明
+- [`config/prompts.json`](config/prompts.json) — 行政命令與政策條文資料
+
+## 開發環境
+
+DevContainer 已設定給 GitHub Codespaces（Python 3.11+），會自動安裝相依套件並開放 8501 埠。
