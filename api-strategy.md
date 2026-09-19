@@ -199,9 +199,28 @@ Groq 過去已下架過多個模型（例如 `llama-3.1-70b-versatile`、`mixtra
 ```python
 MODEL_CHAIN           # 模型降級順序
 MAX_HISTORY_MESSAGES  # 最多送出幾則歷史（預設 10）
-MAX_HISTORY_CHARS     # 歷史字元上限（預設 12000）
+MAX_HISTORY_CHARS     # 歷史字元上限（預設 12000），同時是單則訊息的截斷點
 MAX_TOKENS            # 單次回覆上限（預設 1600）—— 最直接的省錢開關
 TEMPERATURE           # 預設 0.4，合規審查需要穩定輸出
 MAX_RETRIES           # 重試次數（預設 3）
-SHOW_RESPONSE_META    # 設 True 會顯示模型名稱與耗時，除錯時很有用
+RETRY_BACKOFF         # 重試間隔基數（預設 1.5 秒，指數退避）
+RATE_LIMIT_COOLDOWN   # 撞到 429 後暫停該模型幾秒（預設 90）
+SHOW_RESPONSE_META    # 設 True 會顯示模型名稱與耗時，並顯示完整錯誤內容，除錯時很有用
 ```
+
+### 錯誤分類與對應動作
+
+`classify_error()` 把例外分成七類，各自的處理方式不同：
+
+| 分類 | 觸發條件 | 動作 |
+|---|---|---|
+| `too_large` | 413、request too large | 立即中止（換模型也沒用），提示使用者縮短輸入 |
+| `rate_limit` | 429、quota | 該模型冷卻 90 秒，換下一個 |
+| `auth` | 401、invalid api key | 立即中止 |
+| `model_gone` | 404、decommissioned | 該模型本次 session 停用，換下一個 |
+| `server_error` | 500／502／503、overloaded | 退避重試，仍失敗就換下一個模型 |
+| `transient` | timed out、connection | 退避重試同一個模型，仍失敗就中止（換模型也連不上） |
+| `fatal` | 其他 | 顯示通用訊息，不外洩供應商的原始錯誤內容 |
+
+> 注意：Groq 對「單次請求過長」回傳 413，但錯誤碼同樣是 `rate_limit_exceeded`，
+> 所以 `too_large` 必須排在 `rate_limit` 之前判斷，否則貼上長文件會被誤報成「額度用完」。

@@ -93,6 +93,8 @@ MAX_TOKENS = 1600            # 單次回覆的 token 上限
 TEMPERATURE = 0.4            # 合規審查場景需要穩定輸出，不宜太發散
 MAX_RETRIES = 3              # 暫時性錯誤的重試次數
 RETRY_BACKOFF = 1.5          # 重試間隔基數（秒），採指數退避
+RATE_LIMIT_COOLDOWN = 90     # 429 後暫停使用該模型的秒數（免費層的每分鐘限制多半一分鐘內恢復）
+MODEL_GONE_COOLDOWN = 86400  # 模型已下架，本次 session 內不再嘗試
 FILE_TEXT_LIMIT = 10000      # 上傳檔案擷取的字元上限
 SEARCH_CACHE_TTL = 3600      # 搜尋結果快取秒數
 
@@ -141,17 +143,24 @@ def get_base_prompt() -> str:
 
 def detect_language(text: str) -> str:
     """從使用者輸入判斷語言，讓模型用同一種語言回覆。"""
-    traditional_chars = ['繁', '體', '臺', '灣', '們', '個', '這', '樣', '嗎', '麼', '為', '與']
-    simplified_chars = ['简', '体', '台', '湾', '们', '个', '这', '样', '吗', '么', '为', '与']
+    traditional_chars = ['繁', '體', '臺', '灣', '們', '個', '這', '樣', '嗎', '麼', '為', '與', '點', '開']
+    # 注意：「台」不能列為簡體標記 —— 台灣、台北在繁體中文是標準寫法，
+    # 誤判會讓系統指示模型用簡體回覆，直接違反 prompt.md 的絕對禁令。
+    simplified_chars = ['简', '体', '湾', '们', '个', '这', '样', '吗', '么', '为', '与', '点', '开']
 
-    has_traditional = any(char in text for char in traditional_chars)
-    has_simplified = any(char in text for char in simplified_chars)
+    # 用出現次數比較而非單一命中，避免一個借用字就翻轉判斷
+    traditional_hits = sum(text.count(char) for char in traditional_chars)
+    simplified_hits = sum(text.count(char) for char in simplified_chars)
+    has_traditional = traditional_hits > 0
+    has_simplified = simplified_hits > 0
     has_chinese = any('一' <= char <= '鿿' for char in text)
     has_japanese = any('぀' <= char <= 'ゟ' or '゠' <= char <= 'ヿ' for char in text)
     has_korean = any('가' <= char <= '힯' for char in text)
 
-    if has_traditional and not has_simplified:
-        return 'zh-TW'
+    if has_traditional and simplified_hits > traditional_hits:
+        return 'zh-CN'  # 兩種都有，但簡體明顯較多
+    if has_traditional:
+        return 'zh-TW'  # 只要有繁體特徵就視為繁體（繁體是本專案的安全預設）
     if has_simplified:
         return 'zh-CN'
     if has_japanese:
@@ -238,15 +247,33 @@ def init_groq() -> Groq | None:
 
 
 def classify_error(exc: Exception) -> str:
-    """把各種例外歸類成四種情況，決定要重試、換模型還是直接放棄。"""
+    """把例外歸類，決定要重試、換模型還是直接放棄。
+
+    回傳值：
+    - ``too_large``    輸入超過單次請求上限，換模型也沒用
+    - ``rate_limit``   額度或頻率受限，換下一個模型
+    - ``auth``         金鑰錯誤，立即中止
+    - ``model_gone``   模型已下架，換下一個模型
+    - ``server_error`` 供應商 5xx，重試後換下一個模型
+    - ``transient``    連線或逾時，重試同一個模型
+    - ``fatal``        其他
+    """
     message = str(exc).lower()
+
+    # 必須排在 rate_limit 之前：Groq 對「單次請求過長」回傳 413，
+    # 但錯誤碼同樣是 rate_limit_exceeded，會被誤判成額度用完。
+    if "request too large" in message or "413" in message or "context_length" in message:
+        return "too_large"
     if "rate limit" in message or "rate_limit" in message or "429" in message or "quota" in message:
         return "rate_limit"
     if "authentication" in message or "invalid api key" in message or "401" in message:
         return "auth"
     if "decommission" in message or "does not exist" in message or "model_not_found" in message or "404" in message:
         return "model_gone"
-    if "timeout" in message or "connection" in message or "502" in message or "503" in message or "overloaded" in message:
+    if "overloaded" in message or "500" in message or "502" in message or "503" in message:
+        return "server_error"
+    # groq 的 APITimeoutError 字串是 "Request timed out."，不含 "timeout"
+    if "timed out" in message or "timeout" in message or "connection" in message:
         return "transient"
     return "fatal"
 
@@ -254,19 +281,37 @@ def classify_error(exc: Exception) -> str:
 def friendly_error(exc: Exception) -> str:
     kind = classify_error(exc)
     messages = {
-        "rate_limit": "⏱️ 今日免費額度已用完，請稍後再試（通常等待數分鐘後會恢復）。",
+        "too_large": "📄 這次輸入的內容太長，請縮短後再送出，或分段貼上。",
+        "rate_limit": "⏱️ 目前呼叫太頻繁或額度已滿，請稍候片刻再試。",
         "auth": "🔑 API 驗證失敗，請聯絡管理員確認金鑰設定。",
         "model_gone": "🛠️ 目前可用的模型都無法使用，請聯絡管理員更新模型清單。",
+        "server_error": "🛠️ 模型服務暫時不穩定，請稍後再試一次。",
         "transient": "🌐 連線不穩定，請稍後再試一次。",
     }
-    return messages.get(kind, f"❌ 發生錯誤：{exc}")
+    if kind in messages:
+        return messages[kind]
+    # 供應商的原始錯誤訊息可能夾帶組織 ID、配額數字等內部資訊，
+    # 預設只顯示例外型別；需要完整內容時開啟 SHOW_RESPONSE_META。
+    if SHOW_RESPONSE_META:
+        return f"❌ 發生錯誤（{type(exc).__name__}）：{exc}"
+    return f"❌ 發生未預期的錯誤（{type(exc).__name__}），請稍後再試或聯絡管理員。"
+
+
+def mark_model_unavailable(model: str, seconds: float):
+    """讓某個模型暫時退出候選清單。
+
+    用冷卻時間而非永久標記：Groq 免費層的每分鐘頻率限制通常幾十秒就恢復，
+    永久停用會讓整個 session 都卡在最弱的備援模型上。
+    """
+    cooldowns = st.session_state.setdefault("model_cooldowns", {})
+    cooldowns[model] = time.time() + seconds
 
 
 def available_models() -> list[str]:
-    """排除本次 session 已確認打滿額度的模型。"""
-    failed = st.session_state.get("failed_models", set())
-    remaining = [m for m in MODEL_CHAIN if m not in failed]
-    # 全部都失敗時重新啟用整份清單，讓使用者等待後還能再試
+    """排除仍在冷卻中的模型；全部都在冷卻時回傳完整清單再試一次。"""
+    cooldowns = st.session_state.get("model_cooldowns", {})
+    now = time.time()
+    remaining = [m for m in MODEL_CHAIN if cooldowns.get(m, 0) <= now]
     return remaining or list(MODEL_CHAIN)
 
 
@@ -277,6 +322,7 @@ def build_api_messages(messages: list[dict], system_prompt: str) -> list[dict]:
     1. 移除開場白（純介紹文字，對模型沒有資訊價值）
     2. 只保留最近 MAX_HISTORY_MESSAGES 則
     3. 由新到舊累加，總字元超過 MAX_HISTORY_CHARS 就停止
+    4. 最新一則若自己就超過上限，截斷並加註（不能直接丟掉，那是使用者剛送出的內容）
     """
     history = [
         m for m in messages
@@ -288,7 +334,11 @@ def build_api_messages(messages: list[dict], system_prompt: str) -> list[dict]:
     used_chars = 0
     for msg in reversed(history):
         content = msg["content"]
-        if trimmed and used_chars + len(content) > MAX_HISTORY_CHARS:
+        if not trimmed:
+            # 最新一則一定要送，但仍需設上限，否則貼上長文件會直接撞 413
+            if len(content) > MAX_HISTORY_CHARS:
+                content = content[:MAX_HISTORY_CHARS] + "\n\n（內容過長，已截斷）"
+        elif used_chars + len(content) > MAX_HISTORY_CHARS:
             break
         used_chars += len(content)
         trimmed.append({"role": msg["role"], "content": content})
@@ -300,8 +350,10 @@ def build_api_messages(messages: list[dict], system_prompt: str) -> list[dict]:
 def request_stream(client: Groq, api_messages: list[dict]):
     """依序嘗試模型清單，回傳 (模型名稱, 串流物件)。
 
-    - 429 / 額度用完 → 直接換下一個模型
-    - 連線類暫時錯誤 → 指數退避後重試同一個模型
+    - 輸入過長 → 立即中止（換模型也沒用）
+    - 429 / 模型下架 → 加上冷卻時間，換下一個模型
+    - 供應商 5xx → 退避重試，仍失敗就換下一個模型
+    - 連線／逾時 → 退避重試同一個模型，仍失敗就中止（換模型也連不上）
     - 金鑰錯誤 → 立即中止，重試沒有意義
     """
     last_error: Exception | None = None
@@ -321,30 +373,51 @@ def request_stream(client: Groq, api_messages: list[dict]):
                 last_error = exc
                 kind = classify_error(exc)
 
-                if kind == "auth":
-                    raise
-                if kind in ("rate_limit", "model_gone"):
-                    st.session_state.setdefault("failed_models", set()).add(model)
+                if kind in ("auth", "too_large"):
+                    raise  # 換模型或重試都救不了
+                if kind == "rate_limit":
+                    mark_model_unavailable(model, RATE_LIMIT_COOLDOWN)
                     break  # 換下一個模型
-                if kind == "transient":
-                    # 網路問題與模型無關，重試同一個模型；重試用盡就直接放棄
+                if kind == "model_gone":
+                    mark_model_unavailable(model, MODEL_GONE_COOLDOWN)
+                    break
+                if kind in ("server_error", "transient"):
                     if attempt < MAX_RETRIES - 1:
                         time.sleep(RETRY_BACKOFF * (2 ** attempt))
                         continue
-                    raise
+                    if kind == "transient":
+                        raise  # 連線問題與模型無關，換模型也一樣連不上
+                    break  # 5xx 是該模型當下不穩，換下一個試試
                 break  # 其他錯誤不重試，換下一個模型試試
 
     raise last_error if last_error else RuntimeError("沒有可用的模型")
 
 
 def iter_stream_text(stream):
-    """把 Groq 的串流物件轉成純文字產生器，給 st.write_stream 使用。"""
-    for chunk in stream:
-        if not chunk.choices:
-            continue
-        delta = chunk.choices[0].delta
-        if delta and delta.content:
-            yield delta.content
+    """把 Groq 的串流物件轉成純文字產生器，給 st.write_stream 使用。
+
+    這裡刻意不讓例外往外拋：串流到一半失敗時，若直接拋出，
+    st.write_stream 已經畫在畫面上的內容會被錯誤訊息整段取代，
+    使用者看得到的半段回覆也不會被寫進歷史。改成把錯誤接在後面。
+    """
+    finish_reason = None
+    try:
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+            delta = choice.delta
+            if delta and delta.content:
+                yield delta.content
+    except Exception as exc:  # noqa: BLE001
+        yield f"\n\n---\n⚠️ 回覆中斷：{friendly_error(exc)}"
+        return
+
+    if finish_reason == "length":
+        # 撞到 MAX_TOKENS 而截斷。不提示的話，半截的審查報告會被當成完整結論。
+        yield "\n\n---\n⚠️ 回覆已達長度上限而中斷，請縮小問題範圍或分次詢問。"
 
 
 def build_search_context(user_text: str) -> str:
@@ -491,6 +564,7 @@ def reset_conversation():
     st.session_state.messages = [{"role": "assistant", "content": DEFAULT_ASSISTANT_MESSAGE}]
     st.session_state.file_processed = set()
     st.session_state.pending_prompt = None
+    st.session_state.model_cooldowns = {}  # 讓「清除」也能把降級狀態還原回主力模型
 
 
 # --- LangGraph Agent（預設關閉，保留供日後啟用） ---------------------------
@@ -507,9 +581,8 @@ def init_langchain_groq():
     if not api_key:
         return None
 
-    st.session_state.setdefault("failed_models", set())
-    candidates = [m for m in MODEL_CHAIN if m in TOOL_CALLING_MODELS]
-    models = [m for m in candidates if m not in st.session_state.failed_models]
+    usable = set(available_models())
+    models = [m for m in MODEL_CHAIN if m in TOOL_CALLING_MODELS and m in usable]
     if not models:
         st.error("所有模型都已達到上限，請稍待片刻再試，或聯絡管理員")
         return None
@@ -653,11 +726,13 @@ st.markdown(
 st.session_state.setdefault("messages", [{"role": "assistant", "content": DEFAULT_ASSISTANT_MESSAGE}])
 st.session_state.setdefault("file_processed", set())
 st.session_state.setdefault("session_id", str(uuid.uuid4()))
-st.session_state.setdefault("failed_models", set())
+st.session_state.setdefault("model_cooldowns", {})
 st.session_state.setdefault("pending_prompt", None)
 st.session_state.supabase_enabled = ENABLE_SUPABASE
 st.session_state.search = ENABLE_WEB_SEARCH
-st.session_state.agent_mode = ENABLE_AGENT_MODE and ENABLE_TAVILY
+# 用 setdefault：agent 失敗時會把它設成 False，每次 rerun 重新指派會讓那個
+# 自動降級失效，導致每則訊息都再撞一次同樣的錯誤。
+st.session_state.setdefault("agent_mode", ENABLE_AGENT_MODE and ENABLE_TAVILY)
 
 # --- 初始化各項服務 ---
 client = init_groq()
@@ -666,6 +741,14 @@ if not client:
     st.stop()
 
 supabase_client = init_supabase()
+
+# 開啟 Supabase 時把先前的對話載回來。原本只有側邊欄的開關會呼叫
+# load_chat_history()，側邊欄關閉後就變成「只寫不讀」，紀錄等於白存。
+if st.session_state.supabase_enabled and supabase_client and not st.session_state.get("history_loaded"):
+    st.session_state.history_loaded = True
+    saved = load_chat_history(supabase_client, st.session_state.session_id)
+    if saved:
+        st.session_state.messages = saved
 
 agent_graph = None
 if ENABLE_AGENT_MODE and LANGCHAIN_AVAILABLE:
@@ -728,25 +811,29 @@ if ENABLE_SIDEBAR:
             reset_conversation()
             st.rerun()
 
+# --- 接收輸入：聊天框或範例按鈕 ---
+# st.chat_input 無論在程式的哪個位置呼叫，都會固定顯示在畫面最下方，
+# 所以可以提前取值，讓後面的區塊知道這一輪有沒有待處理的輸入。
+prompt = st.chat_input("輸入要評估的情境或問題…")
+if not prompt and st.session_state.pending_prompt:
+    prompt = st.session_state.pending_prompt
+    st.session_state.pending_prompt = None
+
 # --- 顯示對話歷史 ---
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="🤖" if msg["role"] == "assistant" else "🙋"):
         st.markdown(msg["content"])
 
-# --- 範例問題（只在對話尚未開始時顯示） ---
-if len(st.session_state.messages) <= 1:
+# --- 範例問題（只在對話尚未開始、且這次沒有待處理輸入時顯示） ---
+# 必須先取得 prompt 再決定畫不畫：否則送出第一個問題的那一輪，按鈕會被畫在
+# 開場白與第一組問答中間，要等到下一次互動才消失。
+if not prompt and len(st.session_state.messages) <= 1:
     st.caption("💡 你可以從這些問題開始：")
     for column, example in zip(st.columns(len(EXAMPLE_PROMPTS)), EXAMPLE_PROMPTS):
         with column:
             if st.button(example, key=f"example_{example}", use_container_width=True):
                 st.session_state.pending_prompt = example
                 st.rerun()
-
-# --- 接收輸入：聊天框或範例按鈕 ---
-prompt = st.chat_input("輸入要評估的情境或問題…")
-if not prompt and st.session_state.pending_prompt:
-    prompt = st.session_state.pending_prompt
-    st.session_state.pending_prompt = None
 
 if prompt:
     add_and_save_message("user", prompt)
@@ -783,16 +870,19 @@ if prompt:
 
             api_messages = build_api_messages(st.session_state.messages, system_prompt)
 
+            answered = False
             try:
                 with st.spinner("分析中…"):
                     used_model, stream = request_stream(client, api_messages)
                 # 串流輸出：使用者不必等整段生成完才看到內容
                 response = st.write_stream(iter_stream_text(stream))
+                answered = bool(response)
             except Exception as exc:  # noqa: BLE001
                 response = friendly_error(exc)
                 st.markdown(response)
 
-            if response and search_context:
+            # 只有真的產生回覆才標註搜尋，錯誤訊息加上這句會造成誤導
+            if answered and search_context:
                 response += "\n\n*此回覆含網路搜尋資訊*"
                 st.caption("此回覆含網路搜尋資訊")
 
