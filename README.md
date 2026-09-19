@@ -67,7 +67,7 @@ MAX_TOKENS = 1600            # 單次回覆上限，最直接的省錢開關
 
 ## 文件
 
-- [`docs/api-strategy.md`](docs/api-strategy.md) — **免費 API 之後的升級路線、成本試算與方案比較**
+- [`api-strategy.md`](api-strategy.md) — **免費 API 之後的升級路線、成本試算與方案比較**
 - [`prompt.md`](prompt.md) — 政策審查的系統提示詞
 - [`security.md`](security.md) — 安全性說明
 - [`config/prompts.json`](config/prompts.json) — 行政命令與政策條文資料
