@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -89,7 +90,7 @@ TOOL_CALLING_MODELS = {
 # 成本控制：免費額度以 token 計費，歷史訊息越長每次呼叫越貴
 MAX_HISTORY_MESSAGES = 10    # 最多送出最近 10 則對話
 MAX_HISTORY_CHARS = 12000    # 歷史訊息總字元上限
-MAX_TOKENS = 1600            # 單次回覆的 token 上限
+MAX_TOKENS = 2800            # 單次回覆的 token 上限（gpt-oss 的推理 token 也計入此額度）
 TEMPERATURE = 0.4            # 合規審查場景需要穩定輸出，不宜太發散
 MAX_RETRIES = 3              # 暫時性錯誤的重試次數
 RETRY_BACKOFF = 1.5          # 重試間隔基數（秒），採指數退避
@@ -143,39 +144,40 @@ def get_base_prompt() -> str:
 
 def detect_language(text: str) -> str:
     """從使用者輸入判斷語言，讓模型用同一種語言回覆。"""
-    traditional_chars = ['繁', '體', '臺', '灣', '們', '個', '這', '樣', '嗎', '麼', '為', '與', '點', '開']
     # 注意：「台」不能列為簡體標記 —— 台灣、台北在繁體中文是標準寫法，
     # 誤判會讓系統指示模型用簡體回覆，直接違反 prompt.md 的絕對禁令。
-    simplified_chars = ['简', '体', '湾', '们', '个', '这', '样', '吗', '么', '为', '与', '点', '开']
+    # 也不要放「開」「個」「為」這類日文常用漢字（開発、個人、為替），
+    # 否則純漢字的日文句子會被誤判成中文。
+    traditional_chars = ['繁', '體', '臺', '灣', '們', '這', '樣', '嗎', '麼', '與', '點']
+    simplified_chars = ['简', '体', '湾', '们', '这', '样', '吗', '么', '与', '点']
+
+    # 假名與諺文是明確且無歧義的訊號，必須最先判斷：
+    # 中日韓共用漢字，先比對漢字會把「開発部門で…」這種句子判成中文。
+    if any('぀' <= char <= 'ゟ' or '゠' <= char <= 'ヿ' for char in text):
+        return 'ja'
+    if any('가' <= char <= '힯' for char in text):
+        return 'ko'
 
     # 用出現次數比較而非單一命中，避免一個借用字就翻轉判斷
     traditional_hits = sum(text.count(char) for char in traditional_chars)
     simplified_hits = sum(text.count(char) for char in simplified_chars)
-    has_traditional = traditional_hits > 0
-    has_simplified = simplified_hits > 0
-    has_chinese = any('一' <= char <= '鿿' for char in text)
-    has_japanese = any('぀' <= char <= 'ゟ' or '゠' <= char <= 'ヿ' for char in text)
-    has_korean = any('가' <= char <= '힯' for char in text)
 
-    if has_traditional and simplified_hits > traditional_hits:
-        return 'zh-CN'  # 兩種都有，但簡體明顯較多
-    if has_traditional:
-        return 'zh-TW'  # 只要有繁體特徵就視為繁體（繁體是本專案的安全預設）
-    if has_simplified:
+    if simplified_hits > traditional_hits:
         return 'zh-CN'
-    if has_japanese:
-        return 'ja'
-    if has_korean:
-        return 'ko'
-    if has_chinese:
-        return 'zh-TW'  # 中文預設繁體
+    if traditional_hits > 0:
+        return 'zh-TW'
+    if any('一' <= char <= '鿿' for char in text):
+        return 'zh-TW'  # 有漢字但無繁簡特徵，預設繁體
     return 'en'
 
 
 def get_language_instruction(lang_code: str) -> str:
     language_map = {
         'zh-TW': 'Please respond in Traditional Chinese (繁體中文).',
-        'zh-CN': 'Please respond in Simplified Chinese (简体中文).',
+        # prompt.md 明文規定：任何形式的中文輸入都必須以繁體中文回覆。
+        # 這裡若指示簡體，會與基礎提示詞產生直接牴觸的矛盾指令。
+        'zh-CN': 'The user wrote in Simplified Chinese. Per the base policy prompt, '
+                 'you must still respond entirely in Traditional Chinese (繁體中文).',
         'en': 'Please respond in English.',
         'ja': 'Please respond in Japanese (日本語).',
         'ko': 'Please respond in Korean (한국어).',
@@ -238,12 +240,34 @@ def get_secret(name: str, env_name: str | None = None) -> str | None:
 
 
 @st.cache_resource(show_spinner=False)
+def _build_groq_client(api_key: str) -> Groq:
+    """以金鑰為快取鍵建立客戶端，金鑰輪替時會自動產生新的連線。"""
+    return Groq(api_key=api_key, max_retries=0)  # 重試邏輯由 request_stream 自行處理
+
+
 def init_groq() -> Groq | None:
-    """建立 Groq 客戶端。cache_resource 讓連線在多次 rerun 之間重複使用。"""
+    """取得 Groq 客戶端；沒有金鑰時回傳 None。
+
+    注意不要把整個函式包進 cache_resource：那樣「沒有金鑰」的 None 會被快取住，
+    之後就算補上或更換金鑰，也要重啟整個程序才會生效。
+    """
     api_key = get_secret("groq_api_key", "GROQ_API_KEY")
     if not api_key:
         return None
-    return Groq(api_key=api_key, max_retries=0)  # 重試邏輯由 request_stream 自行處理
+    return _build_groq_client(api_key)
+
+
+def http_status(exc: Exception) -> int | None:
+    """取出 HTTP 狀態碼：先用 SDK 例外自帶的，沒有才從訊息解析。
+
+    不可以用 `"413" in message` 這種裸數字比對 —— 真實的 429 訊息本身就含有
+    "Used 11413"、"try again in 2.413s" 這類數字，會被誤判成 413。
+    """
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    match = re.search(r"error code:\s*(\d{3})", str(exc).lower())
+    return int(match.group(1)) if match else None
 
 
 def classify_error(exc: Exception) -> str:
@@ -259,18 +283,31 @@ def classify_error(exc: Exception) -> str:
     - ``fatal``        其他
     """
     message = str(exc).lower()
+    status = http_status(exc)
 
-    # 必須排在 rate_limit 之前：Groq 對「單次請求過長」回傳 413，
-    # 但錯誤碼同樣是 rate_limit_exceeded，會被誤判成額度用完。
-    if "request too large" in message or "413" in message or "context_length" in message:
+    # 狀態碼優先。413 與 429 在 Groq 共用 rate_limit_exceeded 錯誤碼，
+    # 只有狀態碼能區分「單次請求過長」與「額度／頻率受限」。
+    if status == 413:
         return "too_large"
-    if "rate limit" in message or "rate_limit" in message or "429" in message or "quota" in message:
+    if status == 429:
         return "rate_limit"
-    if "authentication" in message or "invalid api key" in message or "401" in message:
+    if status in (401, 403):
         return "auth"
-    if "decommission" in message or "does not exist" in message or "model_not_found" in message or "404" in message:
+    if status == 404:
         return "model_gone"
-    if "overloaded" in message or "500" in message or "502" in message or "503" in message:
+    if status is not None and status >= 500:
+        return "server_error"
+
+    # 沒有狀態碼時（例如連線層級的例外）才退回文字比對
+    if "request too large" in message or "context_length" in message:
+        return "too_large"
+    if "rate limit" in message or "rate_limit" in message or "quota" in message:
+        return "rate_limit"
+    if "authentication" in message or "invalid api key" in message:
+        return "auth"
+    if "decommission" in message or "does not exist" in message or "model_not_found" in message:
+        return "model_gone"
+    if "overloaded" in message or "service unavailable" in message:
         return "server_error"
     # groq 的 APITimeoutError 字串是 "Request timed out."，不含 "timeout"
     if "timed out" in message or "timeout" in message or "connection" in message:
@@ -320,13 +357,16 @@ def build_api_messages(messages: list[dict], system_prompt: str) -> list[dict]:
 
     裁切規則：
     1. 移除開場白（純介紹文字，對模型沒有資訊價值）
+    1b. 移除錯誤提示（transient），它們不是模型說過的話
     2. 只保留最近 MAX_HISTORY_MESSAGES 則
     3. 由新到舊累加，總字元超過 MAX_HISTORY_CHARS 就停止
     4. 最新一則若自己就超過上限，截斷並加註（不能直接丟掉，那是使用者剛送出的內容）
     """
     history = [
         m for m in messages
-        if m.get("content") and m["content"] != DEFAULT_ASSISTANT_MESSAGE
+        if m.get("content")
+        and not m.get("transient")          # 錯誤提示不是模型的發言
+        and m["content"] != DEFAULT_ASSISTANT_MESSAGE
     ]
     history = history[-MAX_HISTORY_MESSAGES:]
 
@@ -551,9 +591,18 @@ def delete_chat_history(supabase, session_id: str) -> bool:
         return False
 
 
-def add_and_save_message(role: str, content: str):
-    st.session_state.messages.append({"role": role, "content": content})
-    if st.session_state.get("supabase_enabled") and supabase_client:
+def add_and_save_message(role: str, content: str, transient: bool = False):
+    """把訊息加進對話。
+
+    transient=True 代表這是錯誤提示而非模型的真實回覆：畫面上要留著讓使用者看到，
+    但不能寫進 Supabase，也不能在下一輪當成助理發言餵回模型 —— 否則模型會把
+    「額度已用完」當成自己說過的話，後續回答全被帶偏。
+    """
+    message = {"role": role, "content": content}
+    if transient:
+        message["transient"] = True
+    st.session_state.messages.append(message)
+    if not transient and st.session_state.get("supabase_enabled") and supabase_client:
         save_message_to_supabase(supabase_client, st.session_state.session_id, role, content)
 
 
@@ -634,7 +683,10 @@ def tools_router(state: AgentState) -> Literal["tool_node", "__end__"]:
 
 
 @st.cache_resource(show_spinner=False)
-def create_agent_graph(_llm, _search_tool):
+def create_agent_graph(_llm, _search_tool, cache_key: str):
+    # cache_key 不可省略：cache_resource 會忽略底線開頭的參數，
+    # 只傳 _llm 的話，模型降級換了 ChatGroq 之後仍會拿到舊的 graph。
+    del cache_key
     graph_builder = StateGraph(AgentState)
 
     async def model_wrapper(state):
@@ -687,13 +739,16 @@ st.markdown(
       footer { visibility: hidden; }
       #MainMenu { visibility: hidden; }
 
-      /* 對話泡泡：加上邊框與圓角，長篇審查結果比較好閱讀 */
+      /* 對話泡泡：加上邊框與圓角，長篇審查結果比較好閱讀。
+         背景用半透明灰而非 Streamlit 佈景變數 —— 那些變數並不存在於
+         Streamlit 的樣式表中，寫了不會有任何效果。半透明灰會疊在頁面
+         底色上，淺色與深色主題都能得到合適的對比。 */
       [data-testid="stChatMessage"] {
         border: 1px solid rgba(128, 128, 128, 0.18);
         border-radius: 14px;
         padding: 0.9rem 1.1rem;
         margin-bottom: 0.65rem;
-        background-color: var(--secondary-background-color);
+        background-color: rgba(128, 128, 128, 0.06);
       }
       [data-testid="stChatMessage"] p { line-height: 1.75; }
       [data-testid="stChatMessage"] h1,
@@ -756,7 +811,11 @@ if ENABLE_AGENT_MODE and LANGCHAIN_AVAILABLE:
     tavily_search = init_tavily()
     if langchain_llm:
         try:
-            agent_graph = create_agent_graph(langchain_llm, tavily_search)
+            agent_graph = create_agent_graph(
+                langchain_llm,
+                tavily_search,
+                cache_key=st.session_state.get("current_model", ""),
+            )
         except Exception as exc:  # noqa: BLE001
             st.warning(f"Agent 初始化失敗，使用一般模式: {exc}")
             st.session_state.agent_mode = False
@@ -803,7 +862,9 @@ if ENABLE_SIDEBAR:
                         user_message = f"**{uploaded.name}**\n\n請檢查以下內容：\n\n{content[:FILE_TEXT_LIMIT]}"
                         if len(content) > FILE_TEXT_LIMIT:
                             user_message += f"\n\n*（檔案較長，已截取前 {FILE_TEXT_LIMIT} 字元）*"
-                        add_and_save_message("user", user_message)
+                        # 必須走 pending_prompt：回答流程是由 prompt 觸發的，
+                        # 只把訊息塞進 messages 的話，檔案會顯示出來卻永遠不被分析。
+                        st.session_state.pending_prompt = user_message
                         st.rerun()
 
         st.divider()
@@ -845,6 +906,7 @@ if prompt:
         started_at = time.perf_counter()
         used_model = None
         response = ""
+        is_error = False  # 錯誤提示不寫進送給模型的歷史
 
         if use_agent:
             import asyncio
@@ -870,19 +932,18 @@ if prompt:
 
             api_messages = build_api_messages(st.session_state.messages, system_prompt)
 
-            answered = False
             try:
                 with st.spinner("分析中…"):
                     used_model, stream = request_stream(client, api_messages)
                 # 串流輸出：使用者不必等整段生成完才看到內容
                 response = st.write_stream(iter_stream_text(stream))
-                answered = bool(response)
             except Exception as exc:  # noqa: BLE001
                 response = friendly_error(exc)
+                is_error = True
                 st.markdown(response)
 
             # 只有真的產生回覆才標註搜尋，錯誤訊息加上這句會造成誤導
-            if answered and search_context:
+            if response and not is_error and search_context:
                 response += "\n\n*此回覆含網路搜尋資訊*"
                 st.caption("此回覆含網路搜尋資訊")
 
@@ -892,4 +953,6 @@ if prompt:
         if SHOW_RESPONSE_META and used_model:
             st.caption(f"模型：{used_model} ・ 耗時 {time.perf_counter() - started_at:.1f}s")
 
-    add_and_save_message("assistant", response or "（沒有取得回覆，請再試一次）")
+    if not response:
+        response, is_error = "（沒有取得回覆，請再試一次）", True
+    add_and_save_message("assistant", response, transient=is_error)
