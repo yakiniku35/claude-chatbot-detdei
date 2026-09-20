@@ -134,6 +134,7 @@ def load_base_prompt(prompt_mtime: float) -> str:
 
 
 def get_base_prompt() -> str:
+    """取得 prompt.md 的內容；檔案不存在時直接中止並提示管理員。"""
     try:
         prompt_mtime = PROMPT_FILE.stat().st_mtime
     except FileNotFoundError:
@@ -172,6 +173,7 @@ def detect_language(text: str) -> str:
 
 
 def get_language_instruction(lang_code: str) -> str:
+    """把語言代碼轉成要附加在系統提示後面的回覆語言指示。"""
     language_map = {
         'zh-TW': 'Please respond in Traditional Chinese (繁體中文).',
         # prompt.md 明文規定：任何形式的中文輸入都必須以繁體中文回覆。
@@ -217,6 +219,7 @@ def _compose_system_prompt(base_prompt: str, language_instruction: str, include_
 
 
 def build_system_prompt(user_text: str = "", include_tool_guidance: bool = False) -> str:
+    """依使用者輸入的語言組出完整系統提示。"""
     user_language = detect_language(user_text) if user_text else "zh-TW"
     return _compose_system_prompt(
         get_base_prompt(),
@@ -316,6 +319,7 @@ def classify_error(exc: Exception) -> str:
 
 
 def friendly_error(exc: Exception) -> str:
+    """把例外轉成可以直接顯示給使用者看的中文訊息。"""
     kind = classify_error(exc)
     messages = {
         "too_large": "📄 這次輸入的內容太長，請縮短後再送出，或分段貼上。",
@@ -433,13 +437,22 @@ def request_stream(client: Groq, api_messages: list[dict]):
     raise last_error if last_error else RuntimeError("沒有可用的模型")
 
 
-def iter_stream_text(stream):
+def iter_stream_text(stream, notice_state: dict | None = None):
     """把 Groq 的串流物件轉成純文字產生器，給 st.write_stream 使用。
 
     這裡刻意不讓例外往外拋：串流到一半失敗時，若直接拋出，
     st.write_stream 已經畫在畫面上的內容會被錯誤訊息整段取代，
-    使用者看得到的半段回覆也不會被寫進歷史。改成把錯誤接在後面。
+    使用者看得到的半段回覆也不會被寫進歷史。改成把提示接在後面。
+
+    但提示本身不是模型的發言，不能混進存檔與下一輪的歷史。
+    notice_state 會記下實際附加的提示字串，讓呼叫端把它從回覆尾端去掉。
     """
+    def emit(notice: str) -> str:
+        """記下附加的提示字串，並原樣回傳讓呼叫端 yield 出去。"""
+        if notice_state is not None:
+            notice_state["notice"] = notice
+        return notice
+
     finish_reason = None
     try:
         for chunk in stream:
@@ -452,12 +465,12 @@ def iter_stream_text(stream):
             if delta and delta.content:
                 yield delta.content
     except Exception as exc:  # noqa: BLE001
-        yield f"\n\n---\n⚠️ 回覆中斷：{friendly_error(exc)}"
+        yield emit(f"\n\n---\n⚠️ 回覆中斷：{friendly_error(exc)}")
         return
 
     if finish_reason == "length":
         # 撞到 MAX_TOKENS 而截斷。不提示的話，半截的審查報告會被當成完整結論。
-        yield "\n\n---\n⚠️ 回覆已達長度上限而中斷，請縮小問題範圍或分次詢問。"
+        yield emit("\n\n---\n⚠️ 回覆已達長度上限而中斷，請縮小問題範圍或分次詢問。")
 
 
 def build_search_context(user_text: str) -> str:
@@ -533,6 +546,7 @@ def should_search(text: str) -> bool:
 
 @st.cache_resource(show_spinner=False)
 def init_supabase():
+    """建立 Supabase 客戶端；功能關閉或缺少設定時回傳 None。"""
     if not SUPABASE_AVAILABLE or not ENABLE_SUPABASE:
         return None
     url = get_secret("supabase_url", "SUPABASE_URL")
@@ -547,6 +561,7 @@ def init_supabase():
 
 
 def save_message_to_supabase(supabase, session_id: str, role: str, content: str) -> bool:
+    """把單則訊息寫入 chat_history 資料表，成功回傳 True。"""
     if not supabase:
         return False
     try:
@@ -563,6 +578,7 @@ def save_message_to_supabase(supabase, session_id: str, role: str, content: str)
 
 
 def load_chat_history(supabase, session_id: str):
+    """讀回這個 session 先前存下的對話；沒有資料時回傳 None。"""
     if not supabase:
         return None
     try:
@@ -581,6 +597,7 @@ def load_chat_history(supabase, session_id: str):
 
 
 def delete_chat_history(supabase, session_id: str) -> bool:
+    """刪除這個 session 在資料庫中的所有對話紀錄。"""
     if not supabase:
         return False
     try:
@@ -624,6 +641,7 @@ if LANGCHAIN_AVAILABLE:
 
 
 def init_langchain_groq():
+    """建立 Agent 模式用的 ChatGroq，只挑選支援 tool calling 且未在冷卻中的模型。"""
     if not LANGCHAIN_AVAILABLE or not ENABLE_AGENT_MODE:
         return None
     api_key = get_secret("groq_api_key", "GROQ_API_KEY")
@@ -642,6 +660,7 @@ def init_langchain_groq():
 
 
 def init_tavily():
+    """建立 Tavily 搜尋工具；未啟用或缺少金鑰時回傳 None。"""
     if not (LANGCHAIN_AVAILABLE and ENABLE_AGENT_MODE and ENABLE_TAVILY):
         return None
     api_key = get_secret("tavily_api_key", "TAVILY_API_KEY")
@@ -652,12 +671,14 @@ def init_tavily():
 
 
 async def agent_model(state: AgentState, llm, tools):
+    """Agent 的決策節點：讓模型決定要直接回答還是呼叫工具。"""
     llm_with_tools = llm.bind_tools(tools=tools) if tools else llm
     result = await llm_with_tools.ainvoke(state["messages"])
     return {"messages": [result]}
 
 
 async def tool_node(state: AgentState, search_tool):
+    """Agent 的工具節點：執行模型要求的搜尋並把結果包成 ToolMessage。"""
     last = state["messages"][-1]
     tool_calls = getattr(last, "tool_calls", []) or []
     tool_messages = []
@@ -676,6 +697,7 @@ async def tool_node(state: AgentState, search_tool):
 
 
 def tools_router(state: AgentState) -> Literal["tool_node", "__end__"]:
+    """看最後一則訊息有沒有 tool_calls，決定要走工具節點還是結束。"""
     last_message = state["messages"][-1]
     if getattr(last_message, "tool_calls", None):
         return "tool_node"
@@ -684,15 +706,18 @@ def tools_router(state: AgentState) -> Literal["tool_node", "__end__"]:
 
 @st.cache_resource(show_spinner=False)
 def create_agent_graph(_llm, _search_tool, cache_key: str):
+    """建立並編譯 LangGraph agent。"""
     # cache_key 不可省略：cache_resource 會忽略底線開頭的參數，
     # 只傳 _llm 的話，模型降級換了 ChatGroq 之後仍會拿到舊的 graph。
     del cache_key
     graph_builder = StateGraph(AgentState)
 
     async def model_wrapper(state):
+        """把節點函式綁定到這張 graph 用的 llm 與工具。"""
         return await agent_model(state, _llm, [_search_tool] if _search_tool else [])
 
     async def tool_wrapper(state):
+        """把工具節點綁定到這張 graph 用的搜尋工具。"""
         return await tool_node(state, _search_tool)
 
     graph_builder.add_node("model", model_wrapper)
@@ -704,6 +729,7 @@ def create_agent_graph(_llm, _search_tool, cache_key: str):
 
 
 async def chat_with_agent(graph, messages, thread_id, system_prompt):
+    """以 LangGraph agent 產生回覆，回傳最後一則訊息的文字內容。"""
     config = {"configurable": {"thread_id": thread_id}}
     langchain_messages = [SystemMessage(content=system_prompt)]
     for msg in messages[-MAX_HISTORY_MESSAGES:]:
@@ -932,11 +958,22 @@ if prompt:
 
             api_messages = build_api_messages(st.session_state.messages, system_prompt)
 
+            notice_state: dict = {}
             try:
                 with st.spinner("分析中…"):
                     used_model, stream = request_stream(client, api_messages)
                 # 串流輸出：使用者不必等整段生成完才看到內容
-                response = st.write_stream(iter_stream_text(stream))
+                response = st.write_stream(iter_stream_text(stream, notice_state))
+
+                # 中斷／截斷提示要留在畫面上，但不能存檔也不能回送模型 ——
+                # 否則模型下一輪會把「回覆中斷」當成自己說過的話。
+                notice = notice_state.get("notice")
+                if notice and isinstance(response, str):
+                    trimmed = response.removesuffix(notice)
+                    if trimmed.strip():
+                        response = trimmed
+                    else:
+                        is_error = True  # 完全沒產生內容，整則都只是提示
             except Exception as exc:  # noqa: BLE001
                 response = friendly_error(exc)
                 is_error = True

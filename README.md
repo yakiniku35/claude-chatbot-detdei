@@ -62,7 +62,8 @@ streamlit run src/app.py
 ```python
 MAX_HISTORY_MESSAGES = 10    # 最多送出最近 10 則對話
 MAX_HISTORY_CHARS = 12000    # 歷史訊息總字元上限
-MAX_TOKENS = 1600            # 單次回覆上限，最直接的省錢開關
+MAX_TOKENS = 2800            # 單次回覆上限，最直接的省錢開關
+                             # gpt-oss 的推理 token 也計入，設太低會頻繁截斷
 ```
 
 ## 文件
