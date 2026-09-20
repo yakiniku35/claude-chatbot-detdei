@@ -2,8 +2,13 @@
 headless = true
 port = 8501
 
+[browser]
+gatherUsageStats = false
+
 [theme]
-primaryColor = "#FF4B4B"
+# 以深藍為主色，比預設的紅色更符合合規／稽核工具的調性
+primaryColor = "#2563EB"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
-textColor = "#262730"
+secondaryBackgroundColor = "#F6F8FB"
+textColor = "#1F2430"
+font = "sans serif"
