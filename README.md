@@ -33,6 +33,17 @@ export GROQ_API_KEY="your_key_here"
 streamlit run src/app.py
 ```
 
+## 測試
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+`tests/test_app.py` 驗證 `src/app.py` 的純邏輯函式（錯誤分類、語言偵測、歷史裁切、
+模型冷卻、串流中斷提示）。因為 `src/app.py` 模組層級就會呼叫 Streamlit 介面函式，
+測試改由 `tests/conftest.py` 只載入「5. 介面」之前的段落，不會啟動任何 UI。
+
 ## 功能
 
 - **合規審查**：依 `prompt.md` 的格式輸出違反條款、政策來源、明確禁止事項、風險評估與建議行動

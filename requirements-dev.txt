@@ -1,0 +1,6 @@
+# 測試用相依套件（執行期套件請看 requirements.txt）
+#   pip install -r requirements-dev.txt
+#   pytest
+-r requirements.txt
+
+pytest>=8.0.0
