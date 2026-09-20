@@ -285,6 +285,9 @@ def classify_error(exc: Exception) -> str:
     - ``transient``    連線或逾時，重試同一個模型
     - ``fatal``        其他
     """
+    if isinstance(exc, AllModelsCoolingError):
+        return "cooling"
+
     message = str(exc).lower()
     status = http_status(exc)
 
@@ -321,6 +324,9 @@ def classify_error(exc: Exception) -> str:
 def friendly_error(exc: Exception) -> str:
     """把例外轉成可以直接顯示給使用者看的中文訊息。"""
     kind = classify_error(exc)
+    if kind == "cooling":
+        wait = exc.seconds if isinstance(exc, AllModelsCoolingError) else 0
+        return f"⏱️ 所有模型都暫時達到使用上限，約 {wait} 秒後可再試。"
     messages = {
         "too_large": "📄 這次輸入的內容太長，請縮短後再送出，或分段貼上。",
         "rate_limit": "⏱️ 目前呼叫太頻繁或額度已滿，請稍候片刻再試。",
@@ -338,6 +344,14 @@ def friendly_error(exc: Exception) -> str:
     return f"❌ 發生未預期的錯誤（{type(exc).__name__}），請稍後再試或聯絡管理員。"
 
 
+class AllModelsCoolingError(Exception):
+    """所有模型都在冷卻中，這一輪不該再打 API。"""
+
+    def __init__(self, seconds: float):
+        self.seconds = max(0, int(seconds))
+        super().__init__(f"所有模型都在冷卻中，約 {self.seconds} 秒後恢復")
+
+
 def mark_model_unavailable(model: str, seconds: float):
     """讓某個模型暫時退出候選清單。
 
@@ -349,11 +363,23 @@ def mark_model_unavailable(model: str, seconds: float):
 
 
 def available_models() -> list[str]:
-    """排除仍在冷卻中的模型；全部都在冷卻時回傳完整清單再試一次。"""
+    """回傳目前不在冷卻中的模型，可能是空清單。
+
+    絕對不要在全部冷卻時退回完整清單：那會讓每次提問都重打一輪已限流的模型，
+    而每個 429 又會把到期時間往後推 90 秒，形成永遠無法恢復的活鎖，
+    同時白白消耗額度。沒有可用模型時應該直接告訴使用者還要等多久。
+    """
     cooldowns = st.session_state.get("model_cooldowns", {})
     now = time.time()
-    remaining = [m for m in MODEL_CHAIN if cooldowns.get(m, 0) <= now]
-    return remaining or list(MODEL_CHAIN)
+    return [m for m in MODEL_CHAIN if cooldowns.get(m, 0) <= now]
+
+
+def cooldown_seconds_left() -> int:
+    """距離最早一個模型結束冷卻還有幾秒。"""
+    cooldowns = st.session_state.get("model_cooldowns", {})
+    if not cooldowns:
+        return 0
+    return max(0, int(min(cooldowns.values()) - time.time()))
 
 
 def build_api_messages(messages: list[dict], system_prompt: str) -> list[dict]:
@@ -400,9 +426,13 @@ def request_stream(client: Groq, api_messages: list[dict]):
     - 連線／逾時 → 退避重試同一個模型，仍失敗就中止（換模型也連不上）
     - 金鑰錯誤 → 立即中止，重試沒有意義
     """
+    models = available_models()
+    if not models:
+        raise AllModelsCoolingError(cooldown_seconds_left())
+
     last_error: Exception | None = None
 
-    for model in available_models():
+    for model in models:
         for attempt in range(MAX_RETRIES):
             try:
                 stream = client.chat.completions.create(
@@ -731,8 +761,15 @@ def create_agent_graph(_llm, _search_tool, cache_key: str):
 async def chat_with_agent(graph, messages, thread_id, system_prompt):
     """以 LangGraph agent 產生回覆，回傳最後一則訊息的文字內容。"""
     config = {"configurable": {"thread_id": thread_id}}
+    # 與 build_api_messages 用同一套過濾：錯誤提示與開場白都不是模型的發言
+    usable = [
+        m for m in messages
+        if m.get("content")
+        and not m.get("transient")
+        and m["content"] != DEFAULT_ASSISTANT_MESSAGE
+    ]
     langchain_messages = [SystemMessage(content=system_prompt)]
-    for msg in messages[-MAX_HISTORY_MESSAGES:]:
+    for msg in usable[-MAX_HISTORY_MESSAGES:]:
         if msg["role"] == "user":
             langchain_messages.append(HumanMessage(content=msg["content"]))
         elif msg["role"] == "assistant":
